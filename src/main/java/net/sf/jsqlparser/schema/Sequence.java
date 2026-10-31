@@ -1,8 +1,8 @@
-/*
+/*-
  * #%L
  * JSQLParser library
  * %%
- * Copyright (C) 2004 - 2020 JSQLParser
+ * Copyright (C) 2004 - 2019 JSQLParser
  * %%
  * Dual licensed under GNU LGPL 2.1 or Apache License 2.0
  * #L%
@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 
@@ -28,21 +29,43 @@ public class Sequence extends ASTNodeAccessImpl implements MultiPartName {
     private List<String> partItems = new ArrayList<>();
 
     private List<Parameter> parameters;
+    private String dataType;
+    private SequenceOwnership ownership;
 
-    public Sequence() {
+    public SequenceOwnership getOwnership() {
+        return ownership;
     }
+
+    public void setOwnership(SequenceOwnership ownership) {
+        this.ownership = ownership;
+    }
+
+    public Sequence() {}
 
     public Sequence(List<String> partItems) {
         this.partItems = new ArrayList<>(partItems);
         Collections.reverse(this.partItems);
     }
 
+    public List<Parameter> getParameters() {
+        return parameters;
+    }
+
     public void setParameters(List<Parameter> parameters) {
         this.parameters = parameters;
     }
 
-    public List<Parameter> getParameters() {
-        return parameters;
+    public String getDataType() {
+        return dataType;
+    }
+
+    public void setDataType(String dataType) {
+        this.dataType = dataType;
+    }
+
+    public Sequence withDataType(String dataType) {
+        this.setDataType(dataType);
+        return this;
     }
 
     public Database getDatabase() {
@@ -122,12 +145,23 @@ public class Sequence extends ASTNodeAccessImpl implements MultiPartName {
     }
 
     @Override
+    public String getUnquotedName() {
+        return MultiPartName.unquote(partItems.get(NAME_IDX));
+    }
+
+    @Override
     public String toString() {
         StringBuilder sql = new StringBuilder(getFullyQualifiedName());
+        if (dataType != null) {
+            sql.append(" AS ").append(dataType);
+        }
         if (parameters != null) {
             for (Sequence.Parameter parameter : parameters) {
                 sql.append(" ").append(parameter.formatParameter());
             }
+        }
+        if (ownership != null) {
+            sql.append(' ').append(ownership);
         }
         return sql.toString();
     }
@@ -153,32 +187,21 @@ public class Sequence extends ASTNodeAccessImpl implements MultiPartName {
      * The available parameters to a sequence
      */
     public enum ParameterType {
-        INCREMENT_BY,
-        START_WITH,
-        RESTART_WITH,
-        MAXVALUE,
-        NOMAXVALUE,
-        MINVALUE,
-        NOMINVALUE,
-        CYCLE,
-        NOCYCLE,
-        CACHE,
-        NOCACHE,
-        ORDER,
-        NOORDER,
-        KEEP,
-        NOKEEP,
-        SESSION,
-        GLOBAL
+        INCREMENT_BY, INCREMENT, START_WITH, START, RESTART_WITH, MAXVALUE, NOMAXVALUE, MINVALUE, NOMINVALUE, CYCLE, NOCYCLE, CACHE, NOCACHE, ORDER, NOORDER, KEEP, NOKEEP, SESSION, GLOBAL, NO_MINVALUE, NO_MAXVALUE, NO_CYCLE, SEQUENCE_NAME;
+
+        public static ParameterType from(String type) {
+            return Enum.valueOf(ParameterType.class, type.toUpperCase(Locale.ROOT));
+        }
     }
 
     /**
      * Represents a parameter when declaring a sequence
      */
-    public static class Parameter {
+    public static class Parameter implements java.io.Serializable {
 
         private final ParameterType option;
         private Long value;
+        private Sequence sequenceName;
 
         public Parameter(ParameterType option) {
             this.option = option;
@@ -188,16 +211,45 @@ public class Sequence extends ASTNodeAccessImpl implements MultiPartName {
             return value;
         }
 
+        public ParameterType getOption() {
+            return option;
+        }
+
+        /** The sequence named by an identity declaration's SEQUENCE NAME option. */
+        public Sequence getSequenceName() {
+            return sequenceName;
+        }
+
+        public void setSequenceName(Sequence sequenceName) {
+            this.sequenceName = sequenceName;
+        }
+
+        public Parameter withSequenceName(Sequence sequenceName) {
+            setSequenceName(sequenceName);
+            return this;
+        }
+
+        @Override
+        public String toString() {
+            return formatParameter();
+        }
+
         public void setValue(Long value) {
             this.value = value;
         }
 
         public String formatParameter() {
             switch (option) {
+                case SEQUENCE_NAME:
+                    return "SEQUENCE NAME " + sequenceName.getFullyQualifiedName();
                 case INCREMENT_BY:
                     return prefix("INCREMENT BY");
+                case INCREMENT:
+                    return prefix("INCREMENT");
                 case START_WITH:
                     return prefix("START WITH");
+                case START:
+                    return prefix("START");
                 case RESTART_WITH:
                     if (value != null) {
                         return prefix("RESTART WITH");
@@ -208,6 +260,10 @@ public class Sequence extends ASTNodeAccessImpl implements MultiPartName {
                 case MINVALUE:
                 case CACHE:
                     return prefix(option.name());
+                case NO_MINVALUE:
+                case NO_MAXVALUE:
+                case NO_CYCLE:
+                    return option.name().replace('_', ' ');
                 default:
                     // fallthrough just return option name
                     return option.name();

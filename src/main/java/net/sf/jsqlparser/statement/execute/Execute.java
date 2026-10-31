@@ -9,18 +9,23 @@
  */
 package net.sf.jsqlparser.statement.execute;
 
-import java.util.List;
+import java.util.Locale;
+import java.util.StringJoiner;
+import java.util.function.Consumer;
+import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
+import net.sf.jsqlparser.expression.operators.relational.ParenthesedExpressionList;
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
-import net.sf.jsqlparser.statement.select.PlainSelect;
 
-public class Execute implements Statement {
+import java.util.List;
+
+public class Execute extends ASTNodeAccessImpl implements Statement {
 
     private ExecType execType = ExecType.EXECUTE;
     private String name;
     private ExpressionList exprList;
-    private boolean parenthesis = false;
 
     public String getName() {
         return name;
@@ -31,13 +36,11 @@ public class Execute implements Statement {
     }
 
     public void setName(List<String> names) {
+        StringJoiner qualifiedName = new StringJoiner(".");
         for (String item : names) {
-            if (this.name != null) {
-                this.name = this.name + "." + item;
-            } else {
-                this.name = item;
-            }
+            qualifiedName.add(item == null ? "" : item);
         }
+        this.name = qualifiedName.toString();
     }
 
     public ExpressionList getExprList() {
@@ -56,24 +59,44 @@ public class Execute implements Statement {
         this.execType = execType;
     }
 
+    @Deprecated
     public boolean isParenthesis() {
-        return parenthesis;
-    }
-
-    public void setParenthesis(boolean parenthesis) {
-        this.parenthesis = parenthesis;
+        return exprList instanceof ParenthesedExpressionList;
     }
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     @Override
     public String toString() {
-        return execType.name() + " " + name
-                + (exprList != null && exprList.getExpressions() != null ? " "
-                + PlainSelect.getStringList(exprList.getExpressions(), true, parenthesis) : "");
+        StringBuilder builder = new StringBuilder();
+        return appendTo(builder, builder::append).toString();
+    }
+
+    public StringBuilder appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
+        if (execType != ExecType.IMPLICIT) {
+            builder.append(execType.name()).append(' ');
+        }
+        builder.append(name);
+        if (exprList != null) {
+            builder.append(' ');
+            boolean brackets = exprList instanceof ParenthesedExpressionList;
+            if (brackets) {
+                builder.append('(');
+            }
+            for (int i = 0; i < exprList.size(); i++) {
+                if (i > 0) {
+                    builder.append(", ");
+                }
+                expressionPrinter.accept((Expression) exprList.get(i));
+            }
+            if (brackets) {
+                builder.append(')');
+            }
+        }
+        return builder;
     }
 
     public Execute withExecType(ExecType execType) {
@@ -91,14 +114,11 @@ public class Execute implements Statement {
         return this;
     }
 
-    public Execute withParenthesis(boolean parenthesis) {
-        this.setParenthesis(parenthesis);
-        return this;
-    }
-
     public enum ExecType {
-        EXECUTE,
-        EXEC,
-        CALL
+        EXECUTE, EXEC, CALL, IMPLICIT;
+
+        public static ExecType from(String type) {
+            return Enum.valueOf(ExecType.class, type.toUpperCase(Locale.ROOT));
+        }
     }
 }

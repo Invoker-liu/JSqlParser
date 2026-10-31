@@ -10,4 +10,4 @@
 select (systimestamp - order_date) day(9) to second from orders
 where order_id = 2458
 
---@FAILURE: Encountered unexpected token: "(" "(" recorded first on Aug 3, 2021, 7:20:08 AM
+--@SUCCESSFULLY_PARSED_AND_DEPARSED first on 2026年8月10日 上午11:23:23

@@ -9,9 +9,11 @@
  */
 package net.sf.jsqlparser.parser;
 
-public interface ASTNodeAccess {
+import java.io.Serializable;
 
-    SimpleNode getASTNode();
+public interface ASTNodeAccess extends Serializable {
 
-    void setASTNode(SimpleNode node);
+    Node getASTNode();
+
+    void setASTNode(Node node);
 }

@@ -9,11 +9,15 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 import net.sf.jsqlparser.schema.Table;
+import net.sf.jsqlparser.statement.select.Select;
 
-public class DescribeStatement implements Statement {
+public class DescribeStatement extends ASTNodeAccessImpl implements Statement {
 
     private Table table;
+    private Select select;
+    private String describeType;
 
     public DescribeStatement() {
         // empty constructor
@@ -31,18 +35,42 @@ public class DescribeStatement implements Statement {
         this.table = table;
     }
 
-    @Override
-    public String toString() {
-        return "DESCRIBE " + table.getFullyQualifiedName();
+    /** DuckDB also describes a query: {@code DESCRIBE SELECT ...}. */
+    public Select getSelect() {
+        return select;
+    }
+
+    public void setSelect(Select select) {
+        this.select = select;
+    }
+
+    public DescribeStatement withSelect(Select select) {
+        setSelect(select);
+        return this;
     }
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public String toString() {
+        return this.describeType + " "
+                + (select != null ? select.toString() : table.getFullyQualifiedName());
+    }
+
+    @Override
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     public DescribeStatement withTable(Table table) {
         this.setTable(table);
+        return this;
+    }
+
+    public String getDescribeType() {
+        return describeType;
+    }
+
+    public DescribeStatement setDescribeType(String describeType) {
+        this.describeType = describeType;
         return this;
     }
 }

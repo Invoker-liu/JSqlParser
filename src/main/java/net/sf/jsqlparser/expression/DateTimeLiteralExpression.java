@@ -9,6 +9,7 @@
  */
 package net.sf.jsqlparser.expression;
 
+import java.util.Locale;
 import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 
 public class DateTimeLiteralExpression extends ASTNodeAccessImpl implements Expression {
@@ -33,13 +34,13 @@ public class DateTimeLiteralExpression extends ASTNodeAccessImpl implements Expr
     }
 
     @Override
-    public void accept(ExpressionVisitor expressionVisitor) {
-        expressionVisitor.visit(this);
+    public <T, S> T accept(ExpressionVisitor<T> expressionVisitor, S context) {
+        return expressionVisitor.visit(this, context);
     }
 
     @Override
     public String toString() {
-        return type.name() + " " + value;
+        return type != null ? type.name() + " " + value : value;
     }
 
     public DateTimeLiteralExpression withValue(String value) {
@@ -53,6 +54,10 @@ public class DateTimeLiteralExpression extends ASTNodeAccessImpl implements Expr
     }
 
     public enum DateTime {
-        DATE, TIME, TIMESTAMP;
+        DATE, DATETIME, TIME, TIMESTAMP, TIMESTAMPTZ;
+
+        public static DateTime from(String dateTimeStr) {
+            return Enum.valueOf(DateTime.class, dateTimeStr.toUpperCase(Locale.ROOT));
+        }
     }
 }

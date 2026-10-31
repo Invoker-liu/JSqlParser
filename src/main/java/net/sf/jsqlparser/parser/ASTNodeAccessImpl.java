@@ -9,18 +9,86 @@
  */
 package net.sf.jsqlparser.parser;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+
 public class ASTNodeAccessImpl implements ASTNodeAccess {
 
-    private SimpleNode node;
+    private transient Node node;
 
     @Override
-    public SimpleNode getASTNode() {
+    public Node getASTNode() {
         return node;
     }
 
     @Override
-    public void setASTNode(SimpleNode node) {
+    public void setASTNode(Node node) {
         this.node = node;
     }
 
+    /**
+     * The comments preceding this node's first token, in source order, with the original token
+     * images. Line comments do not include their line terminator; callers must add a line break
+     * when prepending them to SQL. Empty for nodes built programmatically, which carry no AST.
+     */
+    public List<String> getLeadingComments() {
+        Node node = getASTNode();
+        if (node == null) {
+            return new ArrayList<>();
+        }
+        List<String> comments = new ArrayList<>();
+        for (Token specialToken =
+                node.jjtGetFirstToken().specialToken; specialToken != null; specialToken =
+                        specialToken.specialToken) {
+            comments.add(specialToken.image);
+        }
+        Collections.reverse(comments);
+        return comments;
+    }
+
+    public StringBuilder appendTo(StringBuilder builder) {
+        // don't add spaces around the following punctuation
+        final Set<String> punctuation = new TreeSet<>(Set.of(".", "[", "]"));
+
+        Node Node = getASTNode();
+        if (Node != null) {
+            Token token = Node.jjtGetFirstToken();
+            Token lastToken = Node.jjtGetLastToken();
+            Token prevToken = null;
+            while (token.next != null && token.absoluteEnd <= lastToken.absoluteEnd) {
+                if (!punctuation.contains(token.image)
+                        && (prevToken == null || !punctuation.contains(prevToken.image))) {
+                    builder.append(" ");
+                }
+                builder.append(token.image);
+                prevToken = token;
+                token = token.next;
+            }
+        }
+        return builder;
+    }
+
+    /**
+     * The nearest enclosing object in the tree, or null when there is none. A node that carries
+     * only a token range, for an object no grammar rule opens a tree node for, has no parent.
+     */
+    public ASTNodeAccess getParent() {
+        return getParent(ASTNodeAccess.class);
+    }
+
+    public <T extends ASTNodeAccess> T getParent(Class<T> clazz) {
+        Node parent = node == null ? null : (Node) node.jjtGetParent();
+        while (parent != null && !clazz.isInstance(parent.jjtGetValue())) {
+            parent = (Node) parent.jjtGetParent();
+        }
+        return parent == null ? null : clazz.cast(parent.jjtGetValue());
+    }
+
+    @Override
+    public String toString() {
+        return appendTo(new StringBuilder()).toString();
+    }
 }

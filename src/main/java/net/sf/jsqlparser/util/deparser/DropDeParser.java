@@ -9,28 +9,24 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
+import java.util.function.Consumer;
+import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.drop.Drop;
-import net.sf.jsqlparser.statement.select.PlainSelect;
 
 public class DropDeParser extends AbstractDeParser<Drop> {
+    private final Consumer<Table> tablePrinter;
 
     public DropDeParser(StringBuilder buffer) {
+        this(buffer, buffer::append);
+    }
+
+    public DropDeParser(StringBuilder buffer, Consumer<Table> tablePrinter) {
         super(buffer);
+        this.tablePrinter = tablePrinter;
     }
 
     @Override
     public void deParse(Drop drop) {
-        buffer.append("DROP ");
-        buffer.append(drop.getType());
-        if (drop.isIfExists()) {
-            buffer.append(" IF EXISTS");
-        }
-
-        buffer.append(" ").append(drop.getName());
-
-        if (drop.getParameters() != null && !drop.getParameters().isEmpty()) {
-            buffer.append(" ").append(PlainSelect.getStringList(drop.getParameters()));
-        }
+        drop.appendTo(builder, tablePrinter);
     }
-
 }

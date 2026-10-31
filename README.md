@@ -1,139 +1,268 @@
-# JSqlParser
+<div align="center">
 
-[![Build Status](https://travis-ci.com/JSQLParser/JSqlParser.svg?branch=master)](https://travis-ci.com/JSQLParser/JSqlParser)   [![Coverage Status](https://coveralls.io/repos/JSQLParser/JSqlParser/badge.svg?branch=master)](https://coveralls.io/r/JSQLParser/JSqlParser?branch=master)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/6f9a2d7eb98f45969749e101322634a1)](https://www.codacy.com/gh/JSQLParser/JSqlParser/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=JSQLParser/JSqlParser&amp;utm_campaign=Badge_Grade)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.jsqlparser/jsqlparser/badge.svg)](http://maven-badges.herokuapp.com/maven-central/com.github.jsqlparser/jsqlparser)
+<table border="0" width="100%"><tr>
+<td valign="middle">
+<h1><a href="https://jsqlparser.github.io/JSqlParser">JSqlParser</a></h1>
+<h3>Turn any SQL statement into a traversable tree of Java objects -- and back again.</h3>
+<p>An RDBMS-agnostic SQL parser for the JVM:<br/>one grammar, twelve dialects, no native extensions.</p>
+</td>
+<td width="270" align="center" valign="middle">
+<a href="https://jsqlparser.github.io/JSqlParser">
+<img src="src/site/sphinx/_images/logo-no-background.svg" alt="JSqlParser" width="250"/>
+</a>
+</td>
+</tr></table>
+
+[![CI](https://github.com/JSQLParser/JSqlParser/actions/workflows/ci.yml/badge.svg)](https://github.com/JSQLParser/JSqlParser/actions/workflows/ci.yml)
+[![Coverage Status](https://coveralls.io/repos/JSQLParser/JSqlParser/badge.svg?branch=master)](https://coveralls.io/r/JSQLParser/JSqlParser?branch=master)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/6f9a2d7eb98f45969749e101322634a1)](https://www.codacy.com/gh/JSQLParser/JSqlParser/dashboard)
+[![Manticore Build](https://img.shields.io/maven-central/v/com.manticore-projects.jsqlformatter/jsqlparser.svg?label=manticore%20build&color=ff420e)](https://central.sonatype.com/artifact/com.manticore-projects.jsqlformatter/jsqlparser)
+[![Maven Central](https://img.shields.io/maven-central/v/com.github.jsqlparser/jsqlparser.svg?label=upstream%20release)](https://central.sonatype.com/artifact/com.github.jsqlparser/jsqlparser)
 [![Javadocs](https://www.javadoc.io/badge/com.github.jsqlparser/jsqlparser.svg)](https://www.javadoc.io/doc/com.github.jsqlparser/jsqlparser)
+[![GitHub Stars](https://img.shields.io/github/stars/JSQLParser/JSqlParser?style=flat&label=stars)](https://github.com/JSQLParser/JSqlParser/stargazers)
+[![Gitter](https://badges.gitter.im/JSQLParser/JSqlParser.svg)](https://gitter.im/JSQLParser/JSqlParser)
 
-[![Gitter](https://badges.gitter.im/JSQLParser/JSqlParser.svg)](https://gitter.im/JSQLParser/JSqlParser?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
-[![Code Quality: Java](https://img.shields.io/lgtm/grade/java/g/JSQLParser/JSqlParser.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/JSQLParser/JSqlParser/context:java)
-[![Total Alerts](https://img.shields.io/lgtm/alerts/g/JSQLParser/JSqlParser.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/JSQLParser/JSqlParser/alerts)
+**[Website](https://jsqlparser.github.io/JSqlParser)** · **[Samples](https://jsqlparser.github.io/JSqlParser/usage.html#parse-a-sql-statements)** · **[Syntax](https://jsqlparser.github.io/JSqlParser/syntax.html)** · **[Change Log](https://jsqlparser.github.io/JSqlParser/changelog.html#latest-changes-since-jsqlparser-version)** · **[Contributing](https://jsqlparser.github.io/JSqlParser/contribution.html)**
 
-Look here for more information and examples: https://github.com/JSQLParser/JSqlParser/wiki.
- 
-## License
+</div>
 
-JSqlParser is dual licensed under **LGPL V2.1** or **Apache Software License, Version 2.0**.
+---
 
-## Discussion
+## What it does
 
-Please provide feedback on:
+Give it SQL. Get an AST you can walk, rewrite, and print back out.
 
-* API changes: extend visitor with return values (https://github.com/JSQLParser/JSqlParser/issues/901)
-
-## News
-* Released version **4.4** of JSqlParser
-* The array parsing is the default behaviour. Square bracket quotation has to be enabled using 
-  a parser flag (**CCJSqlParser.withSquareBracketQuotation**).
-* due to an API change the version will be 3.0
-* JSqlParser uses now Java 8 at the minimum
-
-More news can be found here: https://github.com/JSQLParser/JSqlParser/wiki/News.
-
-## Alternatives to JSqlParser?
-[**General SQL Parser**](http://www.sqlparser.com/features/introduce.php?utm_source=github-jsqlparser&utm_medium=text-general) looks pretty good, with extended SQL syntax (like PL/SQL and T-SQL) and java + .NET APIs. The tool is commercial (license available online), with a free download option.
-
-## JSqlParser
-
-JSqlParser is a SQL statement parser. It translates SQLs in a traversable hierarchy of Java classes. JSqlParser is not limited to one database but provides support for a lot of specials of Oracle, SqlServer, MySQL, PostgreSQL ... To name some, it has support for Oracles join syntax using (+), PostgreSQLs cast syntax using ::, relational operators like != and so on.
-
-## Support
-If you need help using JSqlParser feel free to file an issue or contact me.
-
-## Contributions
-To help JSqlParser's development you are encouraged to provide 
-* feedback
-* bugreports
-* pull requests for new features
-* improvement requests
-* fund new features or sponsor JSqlParser ([**Sponsor**](https://www.paypal.me/wumpz))
-
-**Please write in English, since it's the language most of the dev team knows.**
-
-Any requests for examples or any particular documentation will be most welcome.
-
-## Extensions in the latest SNAPSHOT version 4.5
-
-Additionally, we have fixed many errors and improved the code quality and the test coverage.
-
-## Extensions of JSqlParser releases
-
-* [Release Notes](https://github.com/JSQLParser/JSqlParser/releases)
-* Modifications before GitHub's release tagging are listed in the [Older Releases](https://github.com/JSQLParser/JSqlParser/wiki/Older-Releases) page.
-* UnsupportedStatement support instead of throwing Exceptions
-* support for **RETURNING** clause of a **DELETE** statement
-* Add support for `... ALTER COLUMN ... DROP DEFAULT`
-* `INSERT` supports `SetOperations` (e. g. `INSERT INTO ... SELECT ... FROM ... UNION SELECT ... FROM ...`), those `SetOperations` are used both for `SELECT` and `VALUES` clauses (API change) in order to simplify the Grammar
-* `(WITH ... SELECT ...)` statements within brackets are now supported
-
-
-## Building from the sources
-
-As the project is a Maven project, building is rather simple by running:
-```shell
-mvn package
+```sql
+SELECT 1 FROM dual WHERE a = b
 ```
 
-Since 4.2, alternatively Gradle can be used
-```shell
-gradle build
+```text
+SQL Text
+ └─Statements: statement.select.PlainSelect
+    ├─selectItems: statement.select.SelectItem
+    │  └─LongValue: 1
+    ├─Table: dual
+    └─where: expression.operators.relational.EqualsTo
+       ├─Column: a
+       └─Column: b
 ```
-    
-The project requires the following to build:
-- Maven (or Gradle)
-- JDK 8 or later. The JAR will target JDK 8, but the version of the maven-compiler-plugin that JSqlParser uses requires JDK 8+
-
-This will produce the jsqlparser-VERSION.jar file in the `target/` directory (`build/libs/jsqlparser-VERSION.jar` in case of Gradle).
-
-**To build this project without using Maven or Gradle, one has to build the parser by JavaCC using the CLI options it provides.**
-
-## Debugging through problems
-
-Refer to the [Visualize Parsing](https://github.com/JSQLParser/JSqlParser/wiki/Examples-of-SQL-parsing#visualize-parsing) section to learn how to run the parser in debug mode.
-
-## Source Code conventions
-
-Recently a checkstyle process was integrated into the build process. JSqlParser follows the sun java format convention. There are no TABs allowed. Use spaces.
 
 ```java
-public void setUsingSelect(SubSelect usingSelect) {
-    this.usingSelect = usingSelect;
-    if (this.usingSelect != null) {
-        this.usingSelect.setUseBrackets(false);
-    }
-}
+String sqlStr = "select 1 from dual where a=b";
+
+PlainSelect select = (PlainSelect) CCJSqlParserUtil.parse(sqlStr);
+
+SelectItem selectItem = select.getSelectItems().get(0);
+Assertions.assertEquals(new LongValue(1), selectItem.getExpression());
+
+Table table = (Table) select.getFromItem();
+Assertions.assertEquals("dual", table.getName());
+
+EqualsTo equalsTo = (EqualsTo) select.getWhere();
+Column a = (Column) equalsTo.getLeftExpression();
+Column b = (Column) equalsTo.getRightExpression();
+Assertions.assertEquals("a", a.getColumnName());
+        Assertions.assertEquals("b", b.getColumnName());
 ```
 
-This is a valid piece of source code:
-* blocks without braces are not allowed
-* after control statements (if, while, for) a whitespace is expected
-* the opening brace should be in the same line as the control statement
+The tree is traversable with the Visitor pattern, and the same object model works in reverse:
+build statements from Java with a [fluent API](https://jsqlparser.github.io/JSqlParser/usage.html#build-a-sql-statements)
+and render them as SQL text.
 
-## Maven Repository
+## Install
 
-JSQLParser is deployed at Sonatype open source maven repository. 
-Starting from now I will deploy there. The first snapshot version there will be 0.8.5-SNAPSHOT.
-To use it this is the repository configuration:
+Use the stable **Manticore builds**. They are released continuously from the current development
+line and carry all of the performance and grammar work described below. The upstream
+`com.github.jsqlparser` release on Maven Central is considerably older.
 
-```xml
-<repositories>
-     <repository>
-         <id>jsqlparser-snapshots</id>
-         <snapshots>
-             <enabled>true</enabled>
-         </snapshots>
-         <url>https://oss.sonatype.org/content/groups/public/</url>
-     </repository>
-</repositories>
-```
-These repository releases will be synchronised to Maven Central. Snapshots remain at Sonatype.
-
-And this is the dependency declaration in your pom:
 ```xml
 <dependency>
-	<groupId>com.github.jsqlparser</groupId>
-	<artifactId>jsqlparser</artifactId>
-	<version>4.4</version>
+    <groupId>com.manticore-projects.jsqlformatter</groupId>
+    <artifactId>jsqlparser</artifactId>
+    <version>[5.3.218,)</version>
 </dependency>
 ```
 
+```gradle
+implementation("com.manticore-projects.jsqlformatter:jsqlparser:+")
+```
+
+<details>
+<summary>Upstream release and snapshots</summary>
+
+```xml
+<dependency>
+    <groupId>com.github.jsqlparser</groupId>
+    <artifactId>jsqlparser</artifactId>
+    <version>5.3</version>
+</dependency>
+```
+
+Snapshot coordinates and repository setup are on the
+[build dependencies page](https://jsqlparser.github.io/JSqlParser/usage.html#build-dependencies).
+
+</details>
+
+## Performance
+
+**11× faster than 5.3**, and the fastest parser on real-world SQL of any of the parsers
+tested, in any language — 19× ahead of `sqlglot[c]` on JSqlParser's own `SELECT` test suite. And the community kept sending performance improvements since. Thank you everyone!
+
+<div align="right">
+  <a href="https://github.com/manticore-projects/jsqlparser-bench">
+    <img src="https://github.com/manticore-projects/jsqlparser-bench/raw/main/benchmark_score.svg" alt="SQL parser benchmark score" width="30%"/>
+  </a>
+</div>
+
+```text
+Benchmark                                     (version)  Mode  Cnt    Score   Error  Units
+JSQLParserBenchmark.parseSQLStatements           latest  avgt   15   21.138 ± 0.557  ms/op <-- Community sponsored improvements!
+JSQLParserBenchmark.parseSQLStatements              5.4  avgt   15   32.528 ± 0.666  ms/op
+JSQLParserBenchmark.parseSQLStatements              5.3  avgt   15  983.459 ± 8.197  ms/op
+JSQLParserBenchmark.parseSQLStatements              5.1  avgt   15  319.601 ± 4.081  ms/op
+```
+
+Methodology and the full cross-parser comparison against SQLGlot, `sqlglot[c]` and
+polyglot-sql: **[jsqlparser-bench](https://github.com/manticore-projects/jsqlparser-bench)**.
+
+## What it parses
+
+JSqlParser targets the SQL standard plus all major RDBMS. One grammar covers all of them,
+and missing syntax gets added on demand — [open an issue](https://github.com/JSQLParser/JSqlParser/issues).
+
+<div align="center">
+
+`BigQuery` · `Snowflake` · `DuckDB` · `Redshift` · `Oracle` · `MS SQL Server` · `Sybase`
+`PostgreSQL` · `MySQL` · `MariaDB` · `DB2` · `H2` · `HSQLDB` · `Derby` · `SQLite`
+
+</div>
+
+|  | Statements |
+|---|---|
+| **Queries** | `SELECT` · `WITH …` · Piped SQL |
+| **ksqlDB windows** | JOIN `WITHIN`, window `GRACE PERIOD`, and `EMIT CHANGES`/`FINAL` |
+| **ClickHouse column selection** | `COLUMNS('regexp')` select items with chained `APPLY`, `EXCEPT`, and `REPLACE` transformers |
+| **DML** | `INSERT` · `UPDATE` · `UPSERT` · `MERGE` · `DELETE` · `TRUNCATE TABLE` |
+| **Oracle RETURNING** | Named output binds (`INTO :name`), JDBC output parameters (`INTO ?`), and `BULK COLLECT INTO` |
+| **DDL** | `CREATE …` · `ALTER …` · `DROP …` |
+| **Oracle vector types** | `VECTOR(*, *)` · `VECTOR(*, FLOAT32)` · `VECTOR(3, *)`, including dense and sparse storage formats |
+| **PostgreSQL ownership** | `DROP OWNED` · `REASSIGN OWNED` |
+| **MySQL table maintenance** | `ANALYZE` · `CHECK` · `OPTIMIZE` · `REPAIR TABLE` |
+| **MySQL account management** | `CREATE`/`ALTER`/`RENAME USER` · `CREATE ROLE` · `SET ROLE` · `SET DEFAULT ROLE` · `SET PASSWORD` |
+| **Tablespaces** | MySQL and PostgreSQL `CREATE TABLESPACE` · `ALTER TABLESPACE` |
+| **PostgreSQL RLS** | `CREATE POLICY` · `ALTER TABLE … ENABLE`/`DISABLE`/`FORCE`/`NO FORCE ROW LEVEL SECURITY` |
+| **Routine changes** | `ALTER FUNCTION` · `ALTER PROCEDURE` · `ALTER ROUTINE` · PostgreSQL `ALTER TRIGGER` |
+| **MySQL metadata statements** | `SHOW [FULL] COLUMNS`/`FIELDS` · `SHOW TABLE STATUS` · `SHOW CREATE TABLE`/`VIEW`/`PROCEDURE`/`FUNCTION`/`TRIGGER`/`EVENT`/`DATABASE`/`USER` |
+| **PostgreSQL administration** | `CREATE`/`ALTER EVENT TRIGGER` · `REINDEX` · `SECURITY LABEL` |
+| **Informix constraints** | `ALTER TABLE … ADD CONSTRAINT` with trailing constraint names for primary, unique, foreign and check constraints; enable with `parser.withDialect(Dialect.INFORMIX)` |
+| **Salesforce SOQL** | `INCLUDES` · `EXCLUDES` |
+
+Beyond statement shapes, the grammar handles nested sub-selects, bind parameters (`?`,
+`:name`), window and analytic functions, Oracle hints, and the T-SQL square-bracket versus
+array-literal ambiguity. The complete reference is on the
+[syntax page](https://jsqlparser.github.io/JSqlParser/syntax.html).
+
+PostgreSQL dollar-quoted strings, including `$tag$…$tag$`, retain their delimiter and
+literal body in `StringValue`. Tagged quotes are disabled by default to preserve
+identifier parsing. Enable them with `parser.withDialect(Dialect.POSTGRESQL)` or
+`parser.withDollarQuotedStringTags(true)`. Untagged `$$…$$` literals remain enabled.
+
+## Statement classification
+
+Any parsed statement can say what it actually does — no second parse, no visitor to write:
+
+```java
+StatementFeatures features = CCJSqlParserUtil.parse(sqlStr).getFeatures();
+
+// safeguard a read-only client before anything reaches the database
+if (connection.isReadOnly() && features.mayModifyData()) {
+    throw new SQLException("rejected: " + features.getUnresolvedReferences());
+}
+
+// dispatch correctly
+if (features.returnsResultSet()) { statement.executeQuery(sqlStr);  }
+else                             { statement.executeUpdate(sqlStr); }
+```
+
+This is not `sqlStr.startsWith("SELECT")` with extra steps. `RETURNING` turns DML into a row
+source, a data-modifying CTE hides a `DELETE` inside a `SELECT`, and `INSERT INTO x SELECT ..`
+contains a query but returns nothing:
+
+| SQL | returns rows | modifies data |
+|---|---|---|
+| `SELECT * FROM t` | yes | no |
+| `INSERT INTO x SELECT * FROM t` | no | yes |
+| `DELETE FROM t RETURNING *` | yes | yes |
+| `WITH c AS (DELETE FROM t RETURNING *) SELECT * FROM c` | yes | yes |
+| `SELECT nextval('s')` | yes | *unproven* |
+
+Features are not mutually exclusive, and each is three-valued: proven, not excludable, or ruled
+out. `is()` answers "did the grammar prove it", `may()` answers "could it be ruled out" — so a
+guard uses `may()` and a dispatcher uses `is()`. Function volatility is not a syntactic property,
+so anything the caller has not declared pure stays unproven and is listed by name.
+
+Legacy MySQL `GROUP BY ... ASC/DESC` is available with `Dialect.MYSQL` and the explicit
+`withLegacyMySqlGroupBy(true)` option; modern/default parsing keeps it disabled.
+
+## Piped SQL
+
+Support is progressing for Piped SQL, which writes queries in the order they actually
+execute rather than the order SQL historically demanded.
+
+```sql
+FROM Produce
+|> WHERE
+    item != 'bananas'
+    AND category IN ('fruit', 'nut')
+|> AGGREGATE COUNT(*) AS num_items, SUM(sales) AS total_sales
+   GROUP BY item
+|> ORDER BY item DESC;
+```
+
+Background reading: the [Google research paper](https://storage.googleapis.com/gweb-research2023-media/pubtools/1004848.pdf),
+[BigQuery pipe syntax](https://cloud.google.com/bigquery/docs/reference/standard-sql/pipe-syntax)
+and [DuckDB FROM-first syntax](https://duckdb.org/docs/sql/query_syntax/from.html#from-first-syntax).
+
+ODBC `{fn TIMESTAMPADD(...)}` and `{fn TIMESTAMPDIFF(...)}` expose standard
+`SQL_TSI_*` interval arguments as time-unit expressions, preserving column traversal.
+
+## Java version
+
+| JSqlParser | Runtime | Notes |
+|------------|---------|-------|
+| 4.9 | JDK 8 | last JDK 8 compatible release |
+| 5.0 and later | JDK 11 | breaking changes to the AST Visitors, see the Migration Guide |
+| 5.1 and later | JDK 11 | building requires a **JDK 17 toolchain** (plugin requirement) |
+| 5.4 and later | JDK 11 | parser generated with **JavaCC 8** |
+
+## Sister projects
+
+- **[JSQLFormatter](https://manticore-projects.com/JSQLFormatter/index.html)** — pretty-printing and formatting of SQL text
+- **[JSQLTranspiler](https://manticore-projects.com/JSQLTranspiler/index.html)** — dialect-specific rewriting, column resolution and lineage, by [Starlake.ai](https://starlake.ai/)
+
+## Alternatives
+
+The dual-licensed [JOOQ](https://www.jooq.org/doc/latest/manual/sql-building/sql-parser/)
+ships a hand-written parser with broad RDBMS support, cross-dialect translation, SQL
+transformation, and a JDBC proxy mode. Worth a look if translation between dialects is your
+primary need rather than AST access.
+
+## Sponsor
+
+A huge thank you to **[Starlake.ai](https://starlake.ai/)**, who simplify data ingestion,
+transformation and orchestration for faster delivery of high-quality data. Starlake has been
+instrumental in providing Piped SQL support and a large number of test cases for BigQuery,
+Redshift, Databricks and DuckDB. If JSqlParser is useful to you, visit
+[Starlake.ai](https://starlake.ai/) and give them a star.
+
+## Documentation
+
+1. [Samples](https://jsqlparser.github.io/JSqlParser/usage.html#parse-a-sql-statements)
+2. [Build instructions](https://jsqlparser.github.io/JSqlParser/usage.html) and [Maven artifact](https://jsqlparser.github.io/JSqlParser/usage.html#build-dependencies)
+3. [Contribution guide](https://jsqlparser.github.io/JSqlParser/contribution.html)
+4. [Change log](https://jsqlparser.github.io/JSqlParser/changelog.html#latest-changes-since-jsqlparser-version)
+5. [Issues](https://github.com/JSQLParser/JSqlParser/issues)
+
+## License
+
+Dual licensed under **LGPL 2.1** or the **Apache License, Version 2.0**. Take your pick.

@@ -14,22 +14,21 @@ import net.sf.jsqlparser.statement.create.view.TemporaryOption;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.select.SelectVisitor;
-import net.sf.jsqlparser.statement.select.WithItem;
 
 public class CreateViewDeParser extends AbstractDeParser<CreateView> {
 
-    private final SelectVisitor selectVisitor;
+    private final SelectVisitor<StringBuilder> selectVisitor;
 
     public CreateViewDeParser(StringBuilder buffer) {
         super(buffer);
         SelectDeParser selectDeParser = new SelectDeParser();
-        selectDeParser.setBuffer(buffer);
+        selectDeParser.setBuilder(buffer);
         ExpressionDeParser expressionDeParser = new ExpressionDeParser(selectDeParser, buffer);
         selectDeParser.setExpressionVisitor(expressionDeParser);
         selectVisitor = selectDeParser;
     }
 
-    public CreateViewDeParser(StringBuilder buffer, SelectVisitor selectVisitor) {
+    public CreateViewDeParser(StringBuilder buffer, SelectVisitor<StringBuilder> selectVisitor) {
         super(buffer);
         this.selectVisitor = selectVisitor;
     }
@@ -37,53 +36,63 @@ public class CreateViewDeParser extends AbstractDeParser<CreateView> {
     @Override
     @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
     public void deParse(CreateView createView) {
-        buffer.append("CREATE ");
+        createView.validateOptions();
+        builder.append("CREATE ");
         if (createView.isOrReplace()) {
-            buffer.append("OR REPLACE ");
+            builder.append("OR REPLACE ");
         }
+        createView.appendMySqlOptionsTo(builder);
         switch (createView.getForce()) {
-        case FORCE:
-            buffer.append("FORCE ");
-            break;
-        case NO_FORCE:
-            buffer.append("NO FORCE ");
-            break;
-        case NONE:
-            break;
-        default:
-            // nothing
+            case FORCE:
+                builder.append("FORCE ");
+                break;
+            case NO_FORCE:
+                builder.append("NO FORCE ");
+                break;
+            case NONE:
+                break;
+            default:
+                // nothing
+        }
+        if (createView.isSecure()) {
+            builder.append("SECURE ");
         }
         if (createView.getTemporary() != TemporaryOption.NONE) {
-            buffer.append(createView.getTemporary().name()).append(" ");
+            builder.append(createView.getTemporary().name()).append(" ");
+        }
+        if (createView.isRecursive()) {
+            builder.append("RECURSIVE ");
         }
         if (createView.isMaterialized()) {
-            buffer.append("MATERIALIZED ");
+            builder.append("MATERIALIZED ");
         }
-        buffer.append("VIEW ").append(createView.getView().getFullyQualifiedName());
+        builder.append("VIEW ");
+        if (createView.isIfNotExists() && !createView.isIfNotExistsAfterViewName()) {
+            builder.append("IF NOT EXISTS ");
+        }
+        builder.append(createView.getView().getFullyQualifiedName());
+        if (createView.isIfNotExists() && createView.isIfNotExistsAfterViewName()) {
+            builder.append(" IF NOT EXISTS");
+        }
+        createView.appendMaterializationOptionsTo(builder);
         if (createView.getColumnNames() != null) {
-            buffer.append(PlainSelect.getStringList(createView.getColumnNames(), true, true));
+            builder.append("(");
+            builder.append(createView.getColumnNames());
+            builder.append(")");
         }
-        buffer.append(" AS ");
+        if (createView.getViewCommentOptions() != null) {
+            builder.append(
+                    PlainSelect.getStringList(createView.getViewCommentOptions(), false, false));
+        }
+        createView.appendParametersTo(builder);
+        builder.append(" AS ");
 
         Select select = createView.getSelect();
-        if (select.getWithItemsList() != null) {
-            buffer.append("WITH ");
-            boolean first = true;
-            for (WithItem item : select.getWithItemsList()) {
-                if (!first) {
-                    buffer.append(", ");
-                } else {
-                    first = false;
-                }
-
-                item.accept(selectVisitor);
-            }
-            buffer.append(" ");
-        }
-        createView.getSelect().getSelectBody().accept(selectVisitor);
+        select.accept(selectVisitor, null);
         if (createView.isWithReadOnly()) {
-            buffer.append(" WITH READ ONLY");
+            builder.append(" WITH READ ONLY");
         }
+        createView.appendOptionsAfterQueryTo(builder);
     }
 
 }

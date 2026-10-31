@@ -9,22 +9,26 @@
  */
 package net.sf.jsqlparser.statement.select;
 
+import java.util.Locale;
 import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 
-public class OrderByElement {
-
-    public enum NullOrdering {
-        NULLS_FIRST,
-        NULLS_LAST
-    }
+public class OrderByElement extends ASTNodeAccessImpl {
 
     private Expression expression;
+    // postgres rollup is an ExpressionList
+    private boolean mysqlWithRollup = false;
     private boolean asc = true;
     private boolean ascDescPresent = false;
     private NullOrdering nullOrdering;
+    private WithFill withFill;
 
     public boolean isAsc() {
         return asc;
+    }
+
+    public void setAsc(boolean asc) {
+        this.asc = asc;
     }
 
     public NullOrdering getNullOrdering() {
@@ -35,20 +39,30 @@ public class OrderByElement {
         this.nullOrdering = nullOrdering;
     }
 
-    public void setAsc(boolean asc) {
-        this.asc = asc;
+    public WithFill getWithFill() {
+        return withFill;
     }
 
-    public void setAscDescPresent(boolean ascDescPresent) {
-        this.ascDescPresent = ascDescPresent;
+    public OrderByElement setWithFill(WithFill withFill) {
+        this.withFill = withFill;
+        return this;
+    }
+
+    public OrderByElement withWithFill(WithFill withFill) {
+        setWithFill(withFill);
+        return this;
     }
 
     public boolean isAscDescPresent() {
         return ascDescPresent;
     }
 
-    public void accept(OrderByVisitor orderByVisitor) {
-        orderByVisitor.visit(this);
+    public void setAscDescPresent(boolean ascDescPresent) {
+        this.ascDescPresent = ascDescPresent;
+    }
+
+    public <T, S> T accept(OrderByVisitor<T> orderByVisitor, S context) {
+        return orderByVisitor.visit(this, context);
     }
 
     public Expression getExpression() {
@@ -73,6 +87,12 @@ public class OrderByElement {
         if (nullOrdering != null) {
             b.append(' ');
             b.append(nullOrdering == NullOrdering.NULLS_FIRST ? "NULLS FIRST" : "NULLS LAST");
+        }
+        if (withFill != null) {
+            b.append(' ').append(withFill);
+        }
+        if (isMysqlWithRollup()) {
+            b.append(" WITH ROLLUP");
         }
         return b.toString();
     }
@@ -99,6 +119,23 @@ public class OrderByElement {
 
     public <E extends Expression> E getExpression(Class<E> type) {
         return type.cast(getExpression());
+    }
+
+    public boolean isMysqlWithRollup() {
+        return mysqlWithRollup;
+    }
+
+    public OrderByElement setMysqlWithRollup(boolean mysqlWithRollup) {
+        this.mysqlWithRollup = mysqlWithRollup;
+        return this;
+    }
+
+    public enum NullOrdering {
+        NULLS_FIRST, NULLS_LAST;
+
+        public static NullOrdering from(String ordering) {
+            return Enum.valueOf(NullOrdering.class, ordering.toUpperCase(Locale.ROOT));
+        }
     }
 
 }

@@ -17,17 +17,28 @@ public class ArrayExpression extends ASTNodeAccessImpl implements Expression {
     private Expression indexExpression;
     private Expression startIndexExpression;
     private Expression stopIndexExpression;
+    private Expression stepExpression;
 
 
     public ArrayExpression() {
         // empty constructor
     }
 
-    public ArrayExpression(Expression objExpression, Expression indexExpression, Expression startIndexExpression, Expression stopIndexExpression) {
+    public ArrayExpression(Expression objExpression, Expression indexExpression,
+            Expression startIndexExpression, Expression stopIndexExpression) {
         this.objExpression = objExpression;
         this.indexExpression = indexExpression;
         this.startIndexExpression = startIndexExpression;
         this.stopIndexExpression = stopIndexExpression;
+    }
+
+    public ArrayExpression(Expression objExpression, Expression indexExpression) {
+        this(objExpression, indexExpression, null, null);
+    }
+
+    public ArrayExpression(Expression objExpression, Expression startIndexExpression,
+            Expression stopIndexExpression) {
+        this(objExpression, null, startIndexExpression, stopIndexExpression);
     }
 
     public Expression getObjExpression() {
@@ -62,9 +73,22 @@ public class ArrayExpression extends ASTNodeAccessImpl implements Expression {
         this.stopIndexExpression = stopIndexExpression;
     }
 
+    public Expression getStepExpression() {
+        return stepExpression;
+    }
+
+    public void setStepExpression(Expression stepExpression) {
+        this.stepExpression = stepExpression;
+    }
+
+    public ArrayExpression withStepExpression(Expression stepExpression) {
+        this.setStepExpression(stepExpression);
+        return this;
+    }
+
     @Override
-    public void accept(ExpressionVisitor expressionVisitor) {
-        expressionVisitor.visit(this);
+    public <T, S> T accept(ExpressionVisitor<T> expressionVisitor, S context) {
+        return expressionVisitor.visit(this, context);
     }
 
     @Override
@@ -72,11 +96,8 @@ public class ArrayExpression extends ASTNodeAccessImpl implements Expression {
         if (indexExpression != null) {
             return objExpression.toString() + "[" + indexExpression.toString() + "]";
         } else {
-            return objExpression.toString() + "[" +
-                    (startIndexExpression == null ? "" : startIndexExpression.toString()) +
-                    ":" +
-                    (stopIndexExpression == null ? "" : stopIndexExpression.toString()) +
-                    "]";
+            return objExpression.toString() + "[" + RangeExpression.toString(startIndexExpression,
+                    stopIndexExpression, stepExpression) + "]";
         }
     }
 
@@ -90,7 +111,8 @@ public class ArrayExpression extends ASTNodeAccessImpl implements Expression {
         return this;
     }
 
-    public ArrayExpression withRangeExpression(Expression startIndexExpression, Expression stopIndexExpression) {
+    public ArrayExpression withRangeExpression(Expression startIndexExpression,
+            Expression stopIndexExpression) {
         this.setStartIndexExpression(startIndexExpression);
         this.setStopIndexExpression(stopIndexExpression);
         return this;

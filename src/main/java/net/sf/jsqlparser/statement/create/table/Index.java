@@ -9,65 +9,58 @@
  */
 package net.sf.jsqlparser.statement.create.table;
 
-import static java.util.stream.Collectors.toList;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
+import java.util.Objects;
+import java.util.function.Consumer;
+import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 
-public class Index {
+/** An index declaration, independent of table and column constraints. */
+public class Index implements TableElement, Serializable, KeyColumnSource, IndexOptionSource {
+    public enum Kind {
+        UNIQUE, INDEX, FULLTEXT, SPATIAL, OTHER
+    }
 
-    private String type;
-    private String using;
-    private List<ColumnParams> columns;
     private final List<String> name = new ArrayList<>();
-    private List<String> idxSpec;
+    private String type;
+    private Kind kind = Kind.OTHER;
+    private List<KeyElement> columns;
+    private String indexKeyword;
+    private IndexOptions indexOptions = new IndexOptions();
+    private List<String> tailParameters = new ArrayList<>();
 
-    public List<String> getColumnsNames() {
-        return columns.stream()
-                .map(col -> col.columnName)
-                .collect(toList());
+    /** Opaque accepted suffixes rendered after the structured index options. */
+    public List<String> getTailParameters() {
+        return tailParameters;
     }
 
-    @Deprecated
-    public List<ColumnParams> getColumnWithParams() {
-        return getColumns();
+    public void setTailParameters(List<String> values) {
+        tailParameters = values;
     }
 
-    @Deprecated
-    public void setColumnNamesWithParams(List<ColumnParams> list) {
-        setColumns(list);
-    }
-
-    public List<ColumnParams> getColumns() {
-        return columns;
-    }
-
-    public void setColumns(List<ColumnParams> columns) {
-        this.columns = columns;
-    }
-
-    public Index withColumns(List<ColumnParams> columns) {
-        setColumns(columns);
+    public Index withTailParameters(List<String> values) {
+        setTailParameters(values);
         return this;
-    }
-
-    public Index addColumns(ColumnParams... functionDeclarationParts) {
-        List<ColumnParams> collection = Optional.ofNullable(getColumns()).orElseGet(ArrayList::new);
-        Collections.addAll(collection, functionDeclarationParts);
-        return this.withColumns(collection);
-    }
-
-    public Index addColumns(Collection<? extends ColumnParams> functionDeclarationParts) {
-        List<ColumnParams> collection = Optional.ofNullable(getColumns()).orElseGet(ArrayList::new);
-        collection.addAll(functionDeclarationParts);
-        return this.withColumns(collection);
     }
 
     public String getName() {
         return name.isEmpty() ? null : String.join(".", name);
+    }
+
+    public void setName(String value) {
+        name.clear();
+        if (value != null) {
+            name.add(value);
+        }
+    }
+
+    public void setName(List<String> value) {
+        name.clear();
+        name.addAll(value);
     }
 
     public List<String> getNameParts() {
@@ -78,110 +71,198 @@ public class Index {
         return type;
     }
 
-    /**
-     * In postgresql, the index type (Btree, GIST, etc.) is indicated
-     * with a USING clause.
-     * Please note that:
-     *  Oracle - the type might be BITMAP, indicating a bitmap kind of index
-     *  MySQL - the type might be FULLTEXT or SPATIAL
-     *  @param using
-     */
-    public void setUsing(String using) {
-        this.using = using;
+    /** Retains SQL spelling and refreshes the index-only classification. */
+    public void setType(String value) {
+        type = value;
+        if (value == null) {
+            kind = Kind.OTHER;
+            return;
+        }
+        String normalized = value.trim().toUpperCase(java.util.Locale.ROOT);
+        switch (normalized.split("\\s+", 2)[0]) {
+            case "UNIQUE":
+                kind = Kind.UNIQUE;
+                break;
+            case "FULLTEXT":
+                kind = Kind.FULLTEXT;
+                break;
+            case "SPATIAL":
+                kind = Kind.SPATIAL;
+                break;
+            case "PRIMARY":
+            case "FOREIGN":
+            case "CHECK":
+            case "EXCLUDE":
+            case "DEFAULT":
+            case "NOT":
+                kind = Kind.OTHER;
+                break;
+            default:
+                kind = normalized.equals("INDEX") || normalized.equals("KEY")
+                        || normalized.endsWith(" INDEX") || normalized.endsWith(" KEY")
+                                ? Kind.INDEX
+                                : Kind.OTHER;
+        }
     }
 
-    public void setColumnsNames(List<String> list) {
-        columns = list.stream().map(ColumnParams::new).collect(toList());
+    public Kind getKind() {
+        return kind;
     }
 
-    public Index withColumnsNames(List<String> list) {
-        setColumnsNames(list);
+    /** Changes classification metadata without rewriting SQL. */
+    public void setKind(Kind value) {
+        kind = value;
+    }
+
+    public Index withKind(Kind value) {
+        setKind(value);
         return this;
     }
 
-    public void setName(String name) {
-        this.name.clear();
-        this.name.add(name);
+    public String getIndexKeyword() {
+        return indexKeyword;
     }
 
-    public void setName(List<String> name) {
-        this.name.clear();
-        this.name.addAll(name);
+    public void setIndexKeyword(String value) {
+        indexKeyword = value;
     }
 
-    public void setType(String string) {
-        type = string;
+    public Index withIndexKeyword(String value) {
+        setIndexKeyword(value);
+        return this;
     }
 
-    public String getUsing() {
-        return using;
+    @Override
+    public List<KeyElement> getColumns() {
+        return columns;
     }
 
-    public List<String> getIndexSpec() {
-        return idxSpec;
+    @Override
+    public void setColumns(List<KeyElement> value) {
+        columns = value;
     }
 
-    public void setIndexSpec(List<String> idxSpec) {
-        this.idxSpec = idxSpec;
+    public Index withColumns(List<KeyElement> value) {
+        setColumns(value);
+        return this;
     }
 
-    public Index withIndexSpec(List<String> idxSpec) {
-        setIndexSpec(idxSpec);
+    public Index withColumnsNames(List<String> value) {
+        setColumnsNames(value);
+        return this;
+    }
+
+    public Index addColumns(KeyElement... values) {
+        return addColumns(java.util.Arrays.asList(values));
+    }
+
+    public Index addColumns(Collection<? extends KeyElement> values) {
+        if (columns == null) {
+            columns = new ArrayList<>();
+        }
+        columns.addAll(values);
+        return this;
+    }
+
+    @Override
+    public IndexOptions getIndexOptions() {
+        return indexOptions;
+    }
+
+    public void setIndexOptions(IndexOptions options) {
+        indexOptions = Objects.requireNonNull(options, "indexOptions");
+    }
+
+    public Index withUsing(String value) {
+        setUsing(value);
+        return this;
+    }
+
+    public Index withIndexSpec(List<String> value) {
+        setIndexSpec(value);
+        return this;
+    }
+
+    public Index withSpecOptions(List<IndexSpecOption> value) {
+        setSpecOptions(value);
+        return this;
+    }
+
+    public Index withClustering(IndexOptions.Clustering value) {
+        setClustering(value);
+        return this;
+    }
+
+    public Index withType(String value) {
+        setType(value);
+        return this;
+    }
+
+    public Index withName(String value) {
+        setName(value);
+        return this;
+    }
+
+    public Index withName(List<String> value) {
+        setName(value);
         return this;
     }
 
     @Override
     public String toString() {
-        String idxSpecText = PlainSelect.getStringList(idxSpec, false, false);
-        return ( type!=null ? type : "") + (!name.isEmpty() ? " " + getName() : "") + " " + PlainSelect.
-                getStringList(columns, true, true) + (!"".equals(idxSpecText) ? " " + idxSpecText : "");
+        StringBuilder sql = new StringBuilder();
+        appendTo(sql, sql::append);
+        return sql.toString();
     }
 
-    public Index withType(String type) {
-        this.setType(type);
-        return this;
-    }
-
-    public Index withUsing(String using) {
-        this.setUsing(using);
-        return this;
-    }
-
-    public Index withName(List<String> name) {
-        this.setName(name);
-        return this;
-    }
-
-    public Index withName(String name) {
-        this.setName(name);
-        return this;
-    }
-
-    public static class ColumnParams {
-        public final String columnName;
-        public final List<String> params;
-
-        public ColumnParams(String columnName) {
-            this.columnName = columnName;
-            this.params = null;
+    public void appendTo(StringBuilder sql, Consumer<Expression> expressionPrinter) {
+        int start = sql.length();
+        appendDeclarationTo(sql, start);
+        appendColumnsAndSpecTo(sql, start, expressionPrinter);
+        appendIndexOptionsTo(sql, expressionPrinter);
+        if (tailParameters != null && !tailParameters.isEmpty()) {
+            sql.append(' ').append(PlainSelect.getStringList(tailParameters, false, false));
         }
+    }
 
-        public ColumnParams(String columnName, List<String> params) {
-            this.columnName = columnName;
-            this.params = params;
+    private void appendDeclarationTo(StringBuilder sql, int start) {
+        if (type != null) {
+            sql.append(type);
         }
-
-        public String getColumnName() {
-            return columnName;
+        if (indexKeyword != null && (type == null || !type.toUpperCase(java.util.Locale.ROOT)
+                .endsWith(indexKeyword.toUpperCase(java.util.Locale.ROOT)))) {
+            appendWord(sql, start, indexKeyword);
         }
-
-        public List<String> getParams() {
-            return params;
+        if (!name.isEmpty()) {
+            appendWord(sql, start, getName());
         }
+        if (getUsing() != null) {
+            appendWord(sql, start, "USING " + getUsing());
+        }
+        sql.append(nullsDistinctClause()).append(clusteringClause());
+    }
 
-        @Override
-        public String toString() {
-            return columnName + (params != null ? " " + String.join(" ", params) : "");
+    /** Separates {@code word} from earlier index words, without a leading space. */
+    private static void appendWord(StringBuilder sql, int start, String word) {
+        appendSeparator(sql, start);
+        sql.append(word);
+    }
+
+    private static void appendSeparator(StringBuilder sql, int start) {
+        if (sql.length() > start) {
+            sql.append(' ');
+        }
+    }
+
+    private void appendColumnsAndSpecTo(StringBuilder sql, int start,
+            Consumer<Expression> expressionPrinter) {
+        if (columns != null && !columns.isEmpty()) {
+            appendSeparator(sql, start);
+            appendColumnsTo(sql, expressionPrinter);
+        }
+        String spec = PlainSelect.getStringList(getIndexSpec(), false, false);
+        if (!spec.isEmpty()) {
+            appendWord(sql, start, spec);
         }
     }
 }

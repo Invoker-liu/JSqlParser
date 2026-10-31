@@ -1,0 +1,52 @@
+/*-
+ * #%L
+ * JSQLParser library
+ * %%
+ * Copyright (C) 2004 - 2019 JSQLParser
+ * %%
+ * Dual licensed under GNU LGPL 2.1 or Apache License 2.0
+ * #L%
+ */
+package net.sf.jsqlparser.statement.alter;
+
+import java.util.Collections;
+import java.util.List;
+
+import net.sf.jsqlparser.statement.create.table.ConstraintKind;
+
+/**
+ * Internal subclass for character set and collation operations within ALTER TABLE. Handles CONVERT
+ * TO CHARACTER SET, DEFAULT CHARACTER SET, CHARACTER SET, and COLLATE.
+ */
+public class AlterExpressionCharset extends AlterExpression {
+
+    @Override
+    public List<ColumnIdentityAction> getColumnIdentityActions() {
+        return Collections.emptyList();
+    }
+
+    @Override
+    protected boolean usesColumnActionBody() {
+        return false;
+    }
+
+    @Override
+    public boolean hasActiveConstraintHeader() {
+        return false;
+    }
+
+    @Override
+    protected boolean usesGeneralBody() {
+        return false;
+    }
+
+    @Override
+    public ConstraintKind getConstraintKind() {
+        return ConstraintKind.OTHER;
+    }
+
+    @Override
+    protected void appendBody(StringBuilder b) {
+        toStringConvert(b);
+    }
+}

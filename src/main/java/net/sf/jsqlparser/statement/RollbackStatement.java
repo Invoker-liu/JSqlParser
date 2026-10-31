@@ -25,88 +25,128 @@
 
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
+
 /**
- *
  * @author are
  */
-public class RollbackStatement implements Statement {
-    private boolean usingWorkKeyword=false;
-    private boolean usingSavepointKeyword=false;
-    private String savepointName=null;
-    private String forceDistributedTransactionIdentifier=null;
+public class RollbackStatement extends ASTNodeAccessImpl implements Statement {
+    private TransactionKeyword keyword;
+    private TransactionChain chain;
+    private boolean usingSavepointKeyword = false;
+    private String savepointName = null;
+    private String forceDistributedTransactionIdentifier = null;
+
+    public TransactionKeyword getKeyword() {
+        return keyword;
+    }
+
+    public void setKeyword(TransactionKeyword keyword) {
+        this.keyword = keyword;
+    }
+
+    public RollbackStatement withKeyword(TransactionKeyword keyword) {
+        setKeyword(keyword);
+        return this;
+    }
+
+    public TransactionChain getChain() {
+        return chain;
+    }
+
+    public void setChain(TransactionChain chain) {
+        this.chain = chain;
+    }
+
+    public RollbackStatement withChain(TransactionChain chain) {
+        setChain(chain);
+        return this;
+    }
 
     public boolean isUsingWorkKeyword() {
-        return usingWorkKeyword;
+        return keyword == TransactionKeyword.WORK;
+    }
+
+    public void setUsingWorkKeyword(boolean usingWorkKeyword) {
+        if (usingWorkKeyword) {
+            keyword = TransactionKeyword.WORK;
+        } else if (keyword == TransactionKeyword.WORK) {
+            keyword = null;
+        }
     }
 
     public RollbackStatement withUsingWorkKeyword(boolean usingWorkKeyword) {
-        this.usingWorkKeyword = usingWorkKeyword;
+        setUsingWorkKeyword(usingWorkKeyword);
         return this;
-    }
-    
-    public void setUsingWorkKeyword(boolean usingWorkKeyword) {
-        this.usingWorkKeyword = usingWorkKeyword;
     }
 
     public boolean isUsingSavepointKeyword() {
         return usingSavepointKeyword;
-    }
-    
-    public RollbackStatement withUsingSavepointKeyword(boolean usingSavepointKeyword) {
-        this.usingSavepointKeyword = usingSavepointKeyword;
-        return this;
     }
 
     public void setUsingSavepointKeyword(boolean usingSavepointKeyword) {
         this.usingSavepointKeyword = usingSavepointKeyword;
     }
 
+    public RollbackStatement withUsingSavepointKeyword(boolean usingSavepointKeyword) {
+        this.usingSavepointKeyword = usingSavepointKeyword;
+        return this;
+    }
+
     public String getSavepointName() {
         return savepointName;
-    }
-    
-    public RollbackStatement withSavepointName(String savepointName) {
-        this.savepointName = savepointName;
-        return this;
     }
 
     public void setSavepointName(String savepointName) {
         this.savepointName = savepointName;
     }
 
+    public RollbackStatement withSavepointName(String savepointName) {
+        this.savepointName = savepointName;
+        return this;
+    }
+
     public String getForceDistributedTransactionIdentifier() {
         return forceDistributedTransactionIdentifier;
     }
-    
-    public RollbackStatement withForceDistributedTransactionIdentifier(String forceDistributedTransactionIdentifier) {
+
+    public void setForceDistributedTransactionIdentifier(
+            String forceDistributedTransactionIdentifier) {
+        this.forceDistributedTransactionIdentifier = forceDistributedTransactionIdentifier;
+    }
+
+    public RollbackStatement withForceDistributedTransactionIdentifier(
+            String forceDistributedTransactionIdentifier) {
         this.forceDistributedTransactionIdentifier = forceDistributedTransactionIdentifier;
         return this;
     }
 
-    public void setForceDistributedTransactionIdentifier(String forceDistributedTransactionIdentifier) {
-        this.forceDistributedTransactionIdentifier = forceDistributedTransactionIdentifier;
+    public StringBuilder appendTo(StringBuilder builder) {
+        builder.append("ROLLBACK");
+        if (keyword != null) {
+            builder.append(' ').append(keyword);
+        }
+        if (savepointName != null && !savepointName.trim().isEmpty()) {
+            builder.append(" TO ").append(usingSavepointKeyword ? "SAVEPOINT " : "")
+                    .append(savepointName);
+        } else if (forceDistributedTransactionIdentifier != null
+                && !forceDistributedTransactionIdentifier.trim().isEmpty()) {
+            builder.append(" FORCE ").append(forceDistributedTransactionIdentifier);
+        }
+        if (chain != null) {
+            builder.append(' ').append(chain);
+        }
+        return builder;
     }
 
     @Override
     public String toString() {
-        return "ROLLBACK " 
-          + ( usingWorkKeyword 
-                ? "WORK "
-                : "" )
-          + (savepointName!=null && savepointName.trim().length()!=0
-                ? "TO " + (usingSavepointKeyword
-                               ? "SAVEPOINT "
-                               : "") + savepointName
-                : forceDistributedTransactionIdentifier!=null && forceDistributedTransactionIdentifier.trim().length()!=0
-                       ? "FORCE " + forceDistributedTransactionIdentifier
-                        : ""
-                        
-                );
+        return appendTo(new StringBuilder()).toString();
     }
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-         statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
 }

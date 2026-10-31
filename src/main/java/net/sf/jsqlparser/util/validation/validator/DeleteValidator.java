@@ -11,6 +11,7 @@ package net.sf.jsqlparser.util.validation.validator;
 
 import net.sf.jsqlparser.parser.feature.Feature;
 import net.sf.jsqlparser.statement.delete.Delete;
+import net.sf.jsqlparser.statement.select.OptionHint;
 import net.sf.jsqlparser.util.validation.ValidationCapability;
 
 /**
@@ -28,16 +29,18 @@ public class DeleteValidator extends AbstractValidator<Delete> {
             validateOptionalFeature(c, delete.getJoins(), Feature.deleteJoin);
             validateOptionalFeature(c, delete.getLimit(), Feature.deleteLimit);
             validateOptionalFeature(c, delete.getOrderByElements(), Feature.deleteOrderBy);
-            validateOptionalFeature(c, delete.getReturningExpressionList(), Feature.insertReturningExpressionList);
+            validateOptionalFeature(c, delete.getReturningClause(),
+                    Feature.deleteReturningExpressionList);
         }
 
         SelectValidator v = getValidator(SelectValidator.class);
-        delete.getTable().accept(v);
+        delete.getTable().accept(v, null);
 
         if (isNotEmpty(delete.getTables())) {
-            delete.getTables().forEach(t -> t.accept(v));
+            delete.getTables().forEach(t -> t.accept(v, null));
         }
 
+        validateOptionalForPortionClause(delete.getForPortionClause());
         validateOptionalExpression(delete.getWhere());
         validateOptionalOrderByElements(delete.getOrderByElements());
 
@@ -47,8 +50,17 @@ public class DeleteValidator extends AbstractValidator<Delete> {
             getValidator(LimitValidator.class).validate(delete.getLimit());
         }
 
-        if (isNotEmpty(delete.getReturningExpressionList())) {
-            delete.getReturningExpressionList().forEach(c -> c .accept(v));
+        if (delete.getOption() != null) {
+            for (OptionHint optionHint : delete.getOption().getOptionHints()) {
+                validateOptionalExpression(optionHint.getValue());
+                if (optionHint.getParameters() != null) {
+                    optionHint.getParameters().forEach(this::validateOptionalExpression);
+                }
+            }
+        }
+
+        if (delete.getReturningClause() != null) {
+            delete.getReturningClause().forEach(c -> c.accept(v, null));
         }
 
     }

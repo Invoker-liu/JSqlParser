@@ -10,6 +10,7 @@
 package net.sf.jsqlparser.util.validation.validator;
 
 import net.sf.jsqlparser.parser.feature.Feature;
+import net.sf.jsqlparser.statement.select.OptionHint;
 import net.sf.jsqlparser.statement.update.Update;
 import net.sf.jsqlparser.util.validation.ValidationCapability;
 
@@ -25,24 +26,20 @@ public class UpdateValidator extends AbstractValidator<Update> {
             validateFeature(c, Feature.update);
             validateOptionalFeature(c, update.getFromItem(), Feature.updateFrom);
             validateOptionalFeature(c, update.getStartJoins(), Feature.updateJoins);
-            validateFeature(c, update.isUseSelect(), Feature.updateUseSelect);
             validateOptionalFeature(c, update.getOrderByElements(), Feature.updateOrderBy);
             validateOptionalFeature(c, update.getLimit(), Feature.updateLimit);
-            validateOptionalFeature(c, update.getReturningExpressionList(), Feature.updateReturning);
+            validateOptionalFeature(c, update.getReturningClause(),
+                    Feature.updateReturning);
         }
 
-        validateOptionalFromItem(update.getTable());
+        if (!update.isTargetTableAlias()) {
+            validateOptionalFromItem(update.getTable());
+        }
 
         validateOptional(update.getStartJoins(),
                 j -> getValidator(SelectValidator.class).validateOptionalJoins(j));
 
-        if (update.isUseSelect()) {
-            validateOptionalExpressions(update.getColumns());
-            validateOptional(update.getSelect(), e -> e.getSelectBody().accept(getValidator(SelectValidator.class)));
-        } else {
-            validateOptionalExpressions(update.getColumns());
-            validateOptionalExpressions(update.getExpressions());
-        }
+        validateOptionalUpdateSets(update.getUpdateSets());
 
         if (update.getFromItem() != null) {
             validateOptionalFromItem(update.getFromItem());
@@ -50,6 +47,7 @@ public class UpdateValidator extends AbstractValidator<Update> {
                     j -> getValidator(SelectValidator.class).validateOptionalJoins(j));
         }
 
+        validateOptionalForPortionClause(update.getForPortionClause());
         validateOptionalExpression(update.getWhere());
         validateOptionalOrderByElements(update.getOrderByElements());
 
@@ -57,9 +55,18 @@ public class UpdateValidator extends AbstractValidator<Update> {
             getValidator(LimitValidator.class).validate(update.getLimit());
         }
 
-        if (isNotEmpty(update.getReturningExpressionList())) {
+        if (update.getOption() != null) {
+            for (OptionHint optionHint : update.getOption().getOptionHints()) {
+                validateOptionalExpression(optionHint.getValue());
+                if (optionHint.getParameters() != null) {
+                    optionHint.getParameters().forEach(this::validateOptionalExpression);
+                }
+            }
+        }
+
+        if (update.getReturningClause() != null) {
             SelectValidator v = getValidator(SelectValidator.class);
-            update.getReturningExpressionList().forEach(c -> c.accept(v));
+            update.getReturningClause().forEach(c -> c.accept(v, null));
         }
     }
 

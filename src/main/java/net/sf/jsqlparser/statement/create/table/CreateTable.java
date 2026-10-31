@@ -15,32 +15,95 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
+import net.sf.jsqlparser.expression.SpannerInterleaveIn;
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.LikeClause;
 import net.sf.jsqlparser.statement.StatementVisitor;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
 
-public class CreateTable implements Statement {
+public class CreateTable extends ASTNodeAccessImpl implements Statement {
 
+    private boolean tableOptionsAfterPartition;
+    private net.sf.jsqlparser.statement.execute.Execute execute;
     private Table table;
     private boolean unlogged = false;
     private List<String> createOptionsStrings;
     private List<String> tableOptionsStrings;
+    private List<TableOption> tableOptions;
     private List<ColumnDefinition> columnDefinitions;
     private List<String> columns;
     private List<Index> indexes;
+    private List<NamedConstraint> tableConstraints;
+    private List<TableElement> tableElements;
     private Select select;
+    private DuplicateHandling duplicateHandling;
     private Table likeTable;
+    private Table cloneTable;
+    private List<Table> inherits;
+    private ColDataType ofType;
     private boolean selectParenthesis;
+    private boolean useAsKeyword = true;
+    private Boolean withData;
     private boolean ifNotExists = false;
     private boolean orReplace = false;
+    private TablePartitioning partitioning;
+    private Table partitionOf;
+    private PartitionBound partitionBound;
 
     private RowMovement rowMovement;
 
+    private SpannerInterleaveIn interleaveIn = null;
+
+    public enum DuplicateHandling {
+        IGNORE, REPLACE
+    }
+
+    public boolean isTableOptionsAfterPartition() {
+        return tableOptionsAfterPartition;
+    }
+
+    public void setTableOptionsAfterPartition(boolean tableOptionsAfterPartition) {
+        this.tableOptionsAfterPartition = tableOptionsAfterPartition;
+    }
+
+    /** Prepared statement source of PostgreSQL CREATE TABLE AS EXECUTE. */
+    public net.sf.jsqlparser.statement.execute.Execute getExecute() {
+        return execute;
+    }
+
+    public void setExecute(net.sf.jsqlparser.statement.execute.Execute execute) {
+        this.execute = execute;
+        select = null;
+        selectParenthesis = false;
+    }
+
+    /** The structured SERVER clause, also present in the shared table-options list. */
+    public ForeignTableOptions getForeignTableOptions() {
+        if (tableOptions != null) {
+            for (TableOption option : tableOptions) {
+                if (option.getForeignTableOptions() != null) {
+                    return option.getForeignTableOptions();
+                }
+            }
+        }
+        return null;
+    }
+
+    /** MySQL's duplicate-key handling when creating a table from a query; null if omitted. */
+    public DuplicateHandling getDuplicateHandling() {
+        return duplicateHandling;
+    }
+
+    public void setDuplicateHandling(DuplicateHandling duplicateHandling) {
+        this.duplicateHandling = duplicateHandling;
+    }
+
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     public Table getTable() {
@@ -60,14 +123,19 @@ public class CreateTable implements Statement {
     }
 
     /**
-     * @return a list of {@link ColumnDefinition}s of this table.
+     * @return a list of {@link ColumnDefinition}s of this table. When ordered table elements are
+     *         present, this is a mutable view of the column definitions in that list.
      */
     public List<ColumnDefinition> getColumnDefinitions() {
         return columnDefinitions;
     }
 
     public void setColumnDefinitions(List<ColumnDefinition> list) {
-        columnDefinitions = list;
+        if (tableElements == null) {
+            columnDefinitions = list;
+        } else {
+            TableElementList.replace(tableElements, ColumnDefinition.class, list);
+        }
     }
 
     public List<String> getColumns() {
@@ -75,18 +143,46 @@ public class CreateTable implements Statement {
     }
 
     public void setColumns(List<String> columns) {
-        this.columns =columns;
+        this.columns = columns;
     }
 
     /**
-     * @return a list of options (as simple strings) of this table definition, as ("TYPE", "=", "MYISAM")
+     * @return a list of options (as simple strings) of this table definition, as ("TYPE", "=",
+     *         "MYISAM"). For typed options, this is a snapshot of their current tokens; use
+     *         {@link #getTableOptions()} to edit the structured options or
+     *         {@link #setTableOptionsStrings(List)} to replace them with raw options.
      */
     public List<String> getTableOptionsStrings() {
-        return tableOptionsStrings;
+        if (tableOptions == null) {
+            return tableOptionsStrings;
+        }
+        List<String> tokens = new ArrayList<>();
+        for (TableOption option : tableOptions) {
+            tokens.addAll(option.getTokens());
+        }
+        return tokens;
     }
 
     public void setTableOptionsStrings(List<String> tableOptionsStrings) {
         this.tableOptionsStrings = tableOptionsStrings;
+        tableOptions = null;
+    }
+
+    /** Returns typed table options in source order. */
+    public List<TableOption> getTableOptions() {
+        return tableOptions;
+    }
+
+    public void setTableOptions(List<TableOption> tableOptions) {
+        this.tableOptions = tableOptions;
+        tableOptionsStrings = null;
+    }
+
+    /** Returns the first option of the requested kind, if present. */
+    public Optional<TableOption> getTableOption(TableOption.Kind kind) {
+        return Optional.ofNullable(tableOptions).orElseGet(Collections::emptyList).stream()
+                .filter(option -> option.getKind() == kind)
+                .findFirst();
     }
 
     public List<String> getCreateOptionsStrings() {
@@ -98,34 +194,228 @@ public class CreateTable implements Statement {
     }
 
     /**
-     * @return a list of {@link Index}es (for example "PRIMARY KEY") of this table.<br>
-     * Indexes created with column definitions (as in mycol INT PRIMARY KEY) are not inserted into
-     * this list.
+     * Returns index declarations only. Table constraints are available through
+     * {@link #getTableConstraints()}. When ordered table elements are present, this is a mutable
+     * view of their indexes.
      */
     public List<Index> getIndexes() {
         return indexes;
     }
 
+    /**
+     * Returns column and table constraint declarations in source order, including MySQL UNIQUE
+     * KEY/INDEX declarations, REFERENCES and explicit NOT NULL options. Ordinary DEFAULT column
+     * options are not classified as constraints; explicit {@link DefaultConstraint} nodes are.
+     * Index declarations, raw options, and constraints inherited from LIKE, a type or another table
+     * are not inferred.
+     *
+     * The list is an unmodifiable membership snapshot. Each view reads its original editable AST
+     * nodes; call this method again after inserting or removing declarations or changing a
+     * nullability option between NULL and NOT NULL. Typed constraint nodes remain included even
+     * when their kind is OTHER. For legacy construction without ordered table elements, columns
+     * precede table constraints.
+     */
+    public List<ConstraintDeclaration> getConstraints() {
+        List<ConstraintDeclaration> declarations = new ArrayList<>();
+        if (tableElements != null) {
+            tableElements.forEach(element -> addConstraints(element, declarations));
+        } else {
+            if (columnDefinitions != null) {
+                columnDefinitions.forEach(column -> addConstraints(column, declarations));
+            }
+            if (tableConstraints != null) {
+                tableConstraints.forEach(constraint -> addConstraints(constraint, declarations));
+            }
+        }
+        return Collections.unmodifiableList(declarations);
+    }
+
+    private static void addConstraints(TableElement element,
+            List<ConstraintDeclaration> declarations) {
+        if (element instanceof ColumnDefinition) {
+            ColumnDefinition column = (ColumnDefinition) element;
+            if (column.getColumnOptions() != null) {
+                for (ColumnOption option : column.getColumnOptions()) {
+                    if (option.getKind() == ColumnOption.Kind.CONSTRAINT
+                            && option.getConstraint() != null
+                            || option.getConstraintKind() != ConstraintKind.OTHER) {
+                        declarations.add(new ConstraintDeclaration(column, option));
+                    }
+                }
+            }
+        } else if (element instanceof NamedConstraint) {
+            declarations.add(new ConstraintDeclaration((NamedConstraint) element));
+        }
+    }
+
     public void setIndexes(List<Index> list) {
-        indexes = list;
+        if (tableElements == null) {
+            indexes = list;
+        } else {
+            TableElementList.replace(tableElements, Index.class, list);
+        }
+    }
+
+    /**
+     * Returns table-level constraint definitions, excluding constraints declared within columns.
+     * When ordered table elements are present, this is a mutable view of their constraints. Use
+     * {@link #getConstraints()} to inspect both column and table declarations.
+     */
+    public List<NamedConstraint> getTableConstraints() {
+        return tableConstraints;
+    }
+
+    public void setTableConstraints(List<NamedConstraint> constraints) {
+        if (tableElements == null) {
+            tableConstraints = constraints;
+        } else {
+            TableElementList.replace(tableElements, NamedConstraint.class, constraints);
+        }
+    }
+
+    /**
+     * Returns columns, constraints, and indexes in the order in which they were declared.
+     */
+    public List<TableElement> getTableElements() {
+        return tableElements;
+    }
+
+    public void setTableElements(List<TableElement> tableElements) {
+        this.tableElements = tableElements;
+        if (tableElements == null) {
+            columnDefinitions = null;
+            indexes = null;
+            tableConstraints = null;
+            return;
+        }
+        columnDefinitions = new TableElementList<>(tableElements, ColumnDefinition.class);
+        indexes = new TableElementList<>(tableElements, Index.class);
+        tableConstraints = new TableElementList<>(tableElements, NamedConstraint.class);
+    }
+
+    /** Returns table elements of a requested AST type while preserving their declaration order. */
+    public <E extends TableElement> List<E> getTableElements(Class<E> type) {
+        if (tableElements == null) {
+            return Collections.emptyList();
+        }
+        List<E> result = new ArrayList<>();
+        for (TableElement element : tableElements) {
+            if (type.isInstance(element)) {
+                result.add(type.cast(element));
+            }
+        }
+        return result;
     }
 
     public Select getSelect() {
         return select;
     }
 
+    public boolean isUseAsKeyword() {
+        return useAsKeyword;
+    }
+
+    public void setUseAsKeyword(boolean useAsKeyword) {
+        this.useAsKeyword = useAsKeyword;
+    }
+
+    /** Returns null for omission, true for WITH DATA, and false for WITH NO DATA. */
+    public Boolean getWithData() {
+        return withData;
+    }
+
+    public void setWithData(Boolean withData) {
+        this.withData = withData;
+    }
+
+    public StringBuilder appendSelectTo(StringBuilder builder,
+            java.util.function.Consumer<Select> selectRenderer) {
+        return appendQueryTo(builder, selectRenderer, builder::append);
+    }
+
+    public StringBuilder appendQueryTo(StringBuilder builder,
+            java.util.function.Consumer<Select> selectRenderer,
+            java.util.function.Consumer<net.sf.jsqlparser.statement.execute.Execute> executeRenderer) {
+        if (select != null || execute != null) {
+            if (duplicateHandling != null) {
+                builder.append(' ').append(duplicateHandling);
+            }
+            builder.append(useAsKeyword ? " AS " : " ");
+            if (selectParenthesis) {
+                builder.append("(");
+            }
+            if (execute != null) {
+                executeRenderer.accept(execute);
+            } else {
+                selectRenderer.accept(select);
+            }
+            if (selectParenthesis) {
+                builder.append(")");
+            }
+            if (withData != null) {
+                builder.append(withData ? " WITH DATA" : " WITH NO DATA");
+            }
+        }
+        return builder;
+    }
+
     public void setSelect(Select select, boolean parenthesis) {
         this.select = select;
+        this.execute = null;
         this.selectParenthesis = parenthesis;
     }
 
     public Table getLikeTable() {
+        if (likeTable != null) {
+            return likeTable;
+        }
+        List<LikeClause> clauses = getTableElements(LikeClause.class);
+        return clauses.isEmpty() ? null : clauses.get(0).getTable();
+    }
+
+    /** Returns the legacy trailing LIKE source, excluding LIKE clauses inside the definition. */
+    public Table getTrailingLikeTable() {
         return likeTable;
     }
 
+    public ColDataType getOfType() {
+        return ofType;
+    }
+
+    public void setOfType(ColDataType ofType) {
+        this.ofType = ofType;
+    }
+
     public void setLikeTable(Table likeTable, boolean parenthesis) {
+        List<LikeClause> clauses = getTableElements(LikeClause.class);
+        if (this.likeTable == null && !clauses.isEmpty()) {
+            if (likeTable != null) {
+                clauses.get(0).setTable(likeTable);
+            } else {
+                List<TableElement> elements = new ArrayList<>(tableElements);
+                elements.remove(clauses.get(0));
+                setTableElements(elements);
+            }
+            return;
+        }
         this.likeTable = likeTable;
         this.selectParenthesis = parenthesis;
+    }
+
+    /**
+     * BigQuery's {@code CREATE [SNAPSHOT] TABLE target CLONE source [FOR SYSTEM_TIME AS OF ...]}.
+     */
+    public Table getCloneTable() {
+        return cloneTable;
+    }
+
+    public void setCloneTable(Table cloneTable) {
+        this.cloneTable = cloneTable;
+    }
+
+    public CreateTable withCloneTable(Table cloneTable) {
+        setCloneTable(cloneTable);
+        return this;
     }
 
     public boolean isIfNotExists() {
@@ -142,6 +432,51 @@ public class CreateTable implements Statement {
 
     public void setOrReplace(boolean orReplace) {
         this.orReplace = orReplace;
+    }
+
+    public TablePartitioning getPartitioning() {
+        return partitioning;
+    }
+
+    public void setPartitioning(TablePartitioning partitioning) {
+        this.partitioning = partitioning;
+    }
+
+    public Table getPartitionOf() {
+        return partitionOf;
+    }
+
+    public void setPartitionOf(Table partitionOf) {
+        this.partitionOf = partitionOf;
+    }
+
+    public PartitionBound getPartitionBound() {
+        return partitionBound;
+    }
+
+    public void setPartitionBound(PartitionBound partitionBound) {
+        this.partitionBound = partitionBound;
+    }
+
+    /** PostgreSQL parent tables, in declaration order; null if INHERITS is absent. */
+    public List<Table> getInherits() {
+        return inherits;
+    }
+
+    public void setInherits(List<Table> inherits) {
+        this.inherits = inherits;
+    }
+
+    public CreateTable withInherits(List<Table> inherits) {
+        setInherits(inherits);
+        return this;
+    }
+
+    /** Shared rendering of the structured parent references. */
+    public void appendInheritanceTo(StringBuilder builder) {
+        if (inherits != null) {
+            builder.append(" INHERITS ").append(PlainSelect.getStringList(inherits, true, true));
+        }
     }
 
     public boolean isSelectParenthesis() {
@@ -163,43 +498,118 @@ public class CreateTable implements Statement {
     @Override
     @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
     public String toString() {
-        String sql;
+        StringBuilder b = new StringBuilder();
+        appendCreateClause(b);
+        appendColumnDefinitions(b);
+        appendInheritanceTo(b);
+        if (partitionBound != null) {
+            b.append(" ").append(partitionBound);
+        }
+        appendTableOptions(b);
+        appendTableProperties(b);
+        return b.toString();
+    }
+
+    private void appendCreateClause(StringBuilder b) {
         String createOps = PlainSelect.getStringList(createOptionsStrings, false, false);
 
-        sql = "CREATE " + (unlogged ? "UNLOGGED " : "")
-                + (!"".equals(createOps) ? createOps + " " : "")
-                + (orReplace ? "OR REPLACE " : "")
-                + "TABLE " + (ifNotExists ? "IF NOT EXISTS " : "") + table;
+        b.append("CREATE ");
+        if (unlogged) {
+            b.append("UNLOGGED ");
+        }
+        if (!"".equals(createOps)) {
+            b.append(createOps).append(" ");
+        }
+        if (orReplace) {
+            b.append("OR REPLACE ");
+        }
+        b.append("TABLE ");
+        if (ifNotExists) {
+            b.append("IF NOT EXISTS ");
+        }
+        b.append(table);
+        if (ofType != null) {
+            b.append(" OF ").append(ofType);
+        }
+        if (partitionOf != null) {
+            b.append(" PARTITION OF ").append(partitionOf);
+        }
+        if (cloneTable != null) {
+            b.append(" CLONE ").append(cloneTable);
+        }
+    }
 
+    private void appendColumnDefinitions(StringBuilder b) {
         if (columns != null && !columns.isEmpty()) {
-            sql += " ";
-            sql += PlainSelect.getStringList(columns, true, true);
+            b.append(" ");
+            b.append(PlainSelect.getStringList(columns, true, true));
         }
-        if (columnDefinitions != null && !columnDefinitions.isEmpty()) {
-            sql += " (";
-
-            sql += PlainSelect.getStringList(columnDefinitions, true, false);
-            if (indexes != null && !indexes.isEmpty()) {
-                sql += ", ";
-                sql += PlainSelect.getStringList(indexes);
+        if (tableElements != null) {
+            b.append(" (");
+            b.append(PlainSelect.getStringList(tableElements, true, false));
+            b.append(")");
+        } else {
+            List<TableElement> definitions = new ArrayList<>();
+            if (columnDefinitions != null) {
+                definitions.addAll(columnDefinitions);
             }
-            sql += ")";
+            if (tableConstraints != null) {
+                definitions.addAll(tableConstraints);
+            }
+            if (indexes != null) {
+                definitions.addAll(indexes);
+            }
+            if (!definitions.isEmpty()) {
+                b.append(" (");
+                b.append(PlainSelect.getStringList(definitions, true, false));
+                b.append(")");
+            }
         }
-        String options = PlainSelect.getStringList(tableOptionsStrings, false, false);
-        if (options != null && options.length() > 0) {
-            sql += " " + options;
-        }
+    }
 
+    public void appendTableOptionsTo(StringBuilder builder,
+            java.util.function.Consumer<net.sf.jsqlparser.expression.Expression> expressionPrinter) {
+        if (tableOptions != null) {
+            for (TableOption option : tableOptions) {
+                builder.append(' ');
+                option.appendTo(builder, expressionPrinter);
+            }
+        } else {
+            String options = PlainSelect.getStringList(tableOptionsStrings, false, false);
+            if (options != null && !options.isEmpty()) {
+                builder.append(' ').append(options);
+            }
+        }
+    }
+
+    private void appendTableOptions(StringBuilder b) {
+        if (partitioning != null && tableOptionsAfterPartition) {
+            b.append(" ").append(partitioning);
+        }
+        appendTableOptionsTo(b, b::append);
+        if (partitioning != null && !tableOptionsAfterPartition) {
+            b.append(" ").append(partitioning);
+        }
+    }
+
+    private void appendTableProperties(StringBuilder b) {
         if (rowMovement != null) {
-            sql += " " + rowMovement.getMode().toString() + " ROW MOVEMENT";
+            b.append(" ").append(rowMovement.getMode()).append(" ROW MOVEMENT");
         }
-        if (select != null) {
-            sql += " AS " + (selectParenthesis ? "(" : "") + select.toString() + (selectParenthesis ? ")" : "");
-        }
+        appendSelectTo(b, b::append);
         if (likeTable != null) {
-            sql += " LIKE " + (selectParenthesis ? "(" : "") + likeTable.toString() + (selectParenthesis ? ")" : "");
+            b.append(" LIKE ");
+            if (selectParenthesis) {
+                b.append("(");
+            }
+            b.append(likeTable);
+            if (selectParenthesis) {
+                b.append(")");
+            }
         }
-        return sql;
+        if (interleaveIn != null) {
+            b.append(", ").append(interleaveIn);
+        }
     }
 
     public CreateTable withTable(Table table) {
@@ -227,6 +637,21 @@ public class CreateTable implements Statement {
         return this;
     }
 
+    public CreateTable withPartitioning(TablePartitioning partitioning) {
+        this.setPartitioning(partitioning);
+        return this;
+    }
+
+    public CreateTable withPartitionOf(Table partitionOf) {
+        setPartitionOf(partitionOf);
+        return this;
+    }
+
+    public CreateTable withPartitionBound(PartitionBound partitionBound) {
+        setPartitionBound(partitionBound);
+        return this;
+    }
+
     public CreateTable withRowMovement(RowMovement rowMovement) {
         this.setRowMovement(rowMovement);
         return this;
@@ -234,6 +659,11 @@ public class CreateTable implements Statement {
 
     public CreateTable withTableOptionsStrings(List<String> tableOptionsStrings) {
         this.setTableOptionsStrings(tableOptionsStrings);
+        return this;
+    }
+
+    public CreateTable withTableOptions(List<TableOption> tableOptions) {
+        this.setTableOptions(tableOptions);
         return this;
     }
 
@@ -252,26 +682,41 @@ public class CreateTable implements Statement {
         return this;
     }
 
+    public CreateTable withTableConstraints(List<NamedConstraint> constraints) {
+        setTableConstraints(constraints);
+        return this;
+    }
+
+    public CreateTable withTableElements(List<TableElement> tableElements) {
+        this.setTableElements(tableElements);
+        return this;
+    }
+
     public CreateTable addCreateOptionsStrings(String... createOptionsStrings) {
-        List<String> collection = Optional.ofNullable(getCreateOptionsStrings()).orElseGet(ArrayList::new);
+        List<String> collection =
+                Optional.ofNullable(getCreateOptionsStrings()).orElseGet(ArrayList::new);
         Collections.addAll(collection, createOptionsStrings);
         return this.withCreateOptionsStrings(collection);
     }
 
     public CreateTable addCreateOptionsStrings(Collection<String> createOptionsStrings) {
-        List<String> collection = Optional.ofNullable(getCreateOptionsStrings()).orElseGet(ArrayList::new);
+        List<String> collection =
+                Optional.ofNullable(getCreateOptionsStrings()).orElseGet(ArrayList::new);
         collection.addAll(createOptionsStrings);
         return this.withCreateOptionsStrings(collection);
     }
 
     public CreateTable addColumnDefinitions(ColumnDefinition... columnDefinitions) {
-        List<ColumnDefinition> collection = Optional.ofNullable(getColumnDefinitions()).orElseGet(ArrayList::new);
+        List<ColumnDefinition> collection =
+                Optional.ofNullable(getColumnDefinitions()).orElseGet(ArrayList::new);
         Collections.addAll(collection, columnDefinitions);
         return this.withColumnDefinitions(collection);
     }
 
-    public CreateTable addColumnDefinitions(Collection<? extends ColumnDefinition> columnDefinitions) {
-        List<ColumnDefinition> collection = Optional.ofNullable(getColumnDefinitions()).orElseGet(ArrayList::new);
+    public CreateTable addColumnDefinitions(
+            Collection<? extends ColumnDefinition> columnDefinitions) {
+        List<ColumnDefinition> collection =
+                Optional.ofNullable(getColumnDefinitions()).orElseGet(ArrayList::new);
         collection.addAll(columnDefinitions);
         return this.withColumnDefinitions(collection);
     }
@@ -298,5 +743,32 @@ public class CreateTable implements Statement {
         List<Index> collection = Optional.ofNullable(getIndexes()).orElseGet(ArrayList::new);
         collection.addAll(indexes);
         return this.withIndexes(collection);
+    }
+
+    public CreateTable addTableConstraints(NamedConstraint... constraints) {
+        List<NamedConstraint> collection =
+                Optional.ofNullable(getTableConstraints()).orElseGet(ArrayList::new);
+        Collections.addAll(collection, constraints);
+        return withTableConstraints(collection);
+    }
+
+    public CreateTable addTableConstraints(Collection<? extends NamedConstraint> constraints) {
+        List<NamedConstraint> collection =
+                Optional.ofNullable(getTableConstraints()).orElseGet(ArrayList::new);
+        collection.addAll(constraints);
+        return withTableConstraints(collection);
+    }
+
+    public SpannerInterleaveIn getSpannerInterleaveIn() {
+        return interleaveIn;
+    }
+
+    public void setSpannerInterleaveIn(SpannerInterleaveIn spannerInterleaveIn) {
+        this.interleaveIn = spannerInterleaveIn;
+    }
+
+    public CreateTable withSpannerInterleaveIn(SpannerInterleaveIn spannerInterleaveIn) {
+        this.interleaveIn = spannerInterleaveIn;
+        return this;
     }
 }

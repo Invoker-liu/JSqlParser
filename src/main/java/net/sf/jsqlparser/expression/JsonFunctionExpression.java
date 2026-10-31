@@ -10,21 +10,24 @@
 
 package net.sf.jsqlparser.expression;
 
+import java.io.Serializable;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
- *
  * @author <a href="mailto:andreas@manticore-projects.com">Andreas Reichel</a>
  */
 
-public class JsonFunctionExpression {
+public class JsonFunctionExpression implements Serializable {
     private final Expression expression;
 
     private boolean usingFormatJson = false;
+    private String encoding;
 
     public JsonFunctionExpression(Expression expression) {
         this.expression = Objects.requireNonNull(expression, "The EXPRESSION must not be null");
     }
+
     public Expression getExpression() {
         return expression;
     }
@@ -36,14 +39,38 @@ public class JsonFunctionExpression {
     public void setUsingFormatJson(boolean usingFormatJson) {
         this.usingFormatJson = usingFormatJson;
     }
-    
+
     public JsonFunctionExpression withUsingFormatJson(boolean usingFormatJson) {
         this.setUsingFormatJson(usingFormatJson);
         return this;
     }
-    
+
+    public String getEncoding() {
+        return encoding;
+    }
+
+    public void setEncoding(String encoding) {
+        this.encoding = encoding;
+    }
+
+    public JsonFunctionExpression withEncoding(String encoding) {
+        this.setEncoding(encoding);
+        return this;
+    }
+
     public StringBuilder append(StringBuilder builder) {
-        return builder.append(getExpression()).append(isUsingFormatJson() ? " FORMAT JSON" : "");
+        return appendTo(builder, builder::append);
+    }
+
+    public StringBuilder appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
+        expressionPrinter.accept(getExpression());
+        if (isUsingFormatJson()) {
+            builder.append(" FORMAT JSON");
+            if (encoding != null) {
+                builder.append(" ENCODING ").append(encoding);
+            }
+        }
+        return builder;
     }
 
     @Override

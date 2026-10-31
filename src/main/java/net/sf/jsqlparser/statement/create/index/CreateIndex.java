@@ -9,29 +9,190 @@
  */
 package net.sf.jsqlparser.statement.create.index;
 
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
+import net.sf.jsqlparser.statement.create.table.IndexOption;
+import net.sf.jsqlparser.statement.create.table.KeyElement;
+import java.util.*;
+import java.util.function.Consumer;
+import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.*;
 import net.sf.jsqlparser.statement.*;
 import net.sf.jsqlparser.statement.create.table.*;
 
-import java.util.*;
-import static java.util.stream.Collectors.joining;
-
-public class CreateIndex implements Statement {
+public class CreateIndex extends ASTNodeAccessImpl implements Statement {
 
     private Table table;
     private Index index;
-    private List<String> tailParameters;
+    private IndexOptions detachedOptions;
+    private final List<AlgorithmOrLockOption> algorithmOrLockOptions = new ArrayList<>();
+    private boolean indexTypeBeforeOn = false;
+    private boolean usingIfNotExists = false;
+    private boolean concurrently;
+    private boolean only;
+    private boolean nullFiltered;
+    private Expression where;
+
+    public boolean isIndexTypeBeforeOn() {
+        return indexTypeBeforeOn;
+    }
+
+    public void setIndexTypeBeforeOn(boolean indexTypeBeforeOn) {
+        this.indexTypeBeforeOn = indexTypeBeforeOn;
+    }
+
+    public boolean isUsingIfNotExists() {
+        return usingIfNotExists;
+    }
+
+    public CreateIndex setUsingIfNotExists(boolean usingIfNotExists) {
+        this.usingIfNotExists = usingIfNotExists;
+        return this;
+    }
+
+    public boolean isConcurrently() {
+        return concurrently;
+    }
+
+    public void setConcurrently(boolean concurrently) {
+        this.concurrently = concurrently;
+    }
+
+    public boolean isOnly() {
+        return only;
+    }
+
+    public void setOnly(boolean only) {
+        this.only = only;
+    }
+
+    /** Whether this Spanner index omits rows with null key values. */
+    public boolean isNullFiltered() {
+        return nullFiltered;
+    }
+
+    public void setNullFiltered(boolean nullFiltered) {
+        this.nullFiltered = nullFiltered;
+    }
+
+    public CreateIndex withNullFiltered(boolean nullFiltered) {
+        setNullFiltered(nullFiltered);
+        return this;
+    }
+
+    public List<String> getIncludeColumns() {
+        IndexOptions options = getOptions();
+        return options == null ? null : options.getIncludeColumns();
+    }
+
+    /**
+     * Copies the supplied list as {@link IndexOptions#setIncludeColumns(List)} does; null clears
+     * it. {@link #getIncludeColumns()} returns the live, mutable list held by the index options.
+     */
+    public void setIncludeColumns(List<String> includeColumns) {
+        getOrCreateOptions().setIncludeColumns(includeColumns);
+    }
+
+    public Boolean getNullsDistinct() {
+        IndexOptions options = getOptions();
+        return options == null ? null : options.getNullsDistinct();
+    }
+
+    public void setNullsDistinct(Boolean nullsDistinct) {
+        getOrCreateOptions().setNullsDistinct(nullsDistinct);
+    }
+
+    public List<IndexOption> getStorageParameters() {
+        IndexOptions options = getOptions();
+        return options == null ? null : options.getStorageParameters();
+    }
+
+    /**
+     * Copies the list container as {@link IndexOptions#setStorageParameters(List)} does, retaining
+     * the option objects; null clears it. {@link #getStorageParameters()} returns the live, mutable
+     * list held by the index options.
+     */
+    public void setStorageParameters(List<IndexOption> storageParameters) {
+        getOrCreateOptions().setStorageParameters(storageParameters);
+    }
+
+    public String getTableSpace() {
+        IndexOptions options = getOptions();
+        return options == null ? null : options.getTableSpace();
+    }
+
+    public void setTableSpace(String tableSpace) {
+        getOrCreateOptions().setTableSpace(tableSpace);
+    }
+
+    private IndexOptions getOptions() {
+        return index == null ? detachedOptions : index.getIndexOptions();
+    }
+
+    private IndexOptions getOrCreateOptions() {
+        if (index != null) {
+            return index.getIndexOptions();
+        }
+        if (detachedOptions == null) {
+            detachedOptions = new IndexOptions();
+        }
+        return detachedOptions;
+    }
+
+    public Expression getWhere() {
+        return where;
+    }
+
+    public void setWhere(Expression where) {
+        this.where = where;
+    }
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     public Index getIndex() {
         return index;
     }
 
+    /**
+     * Replaces the index definition. Options supplied by the new index take precedence; omitted
+     * options inherit the current statement options, including those set before an index was
+     * attached. Passing null detaches the definition without discarding its options. The detached
+     * option lists have independent containers, with their elements retained. Use the option
+     * setters with null to clear individual options.
+     */
     public void setIndex(Index index) {
+        IndexOptions previousOptions = getOptions();
+        if (index == null) {
+            if (this.index != null) {
+                detachedOptions = new IndexOptions();
+                detachedOptions.setIncludeColumns(previousOptions.getIncludeColumns());
+                detachedOptions.setNullsDistinct(previousOptions.getNullsDistinct());
+                detachedOptions.setStorageParameters(previousOptions.getStorageParameters());
+                detachedOptions.setTableSpace(previousOptions.getTableSpace());
+                detachedOptions.setSpecOptions(previousOptions.getSpecOptions());
+            }
+        } else {
+            if (previousOptions != null && previousOptions != index.getIndexOptions()) {
+                if (index.getIncludeColumns() == null) {
+                    index.setIncludeColumns(previousOptions.getIncludeColumns());
+                }
+                if (index.getNullsDistinct() == null) {
+                    index.setNullsDistinct(previousOptions.getNullsDistinct());
+                }
+                if (index.getStorageParameters() == null) {
+                    index.setStorageParameters(previousOptions.getStorageParameters());
+                }
+                if (index.getTableSpace() == null) {
+                    index.setTableSpace(previousOptions.getTableSpace());
+                }
+                if (index.getSpecOptions() == null) {
+                    index.setSpecOptions(previousOptions.getSpecOptions());
+                }
+            }
+            detachedOptions = null;
+        }
         this.index = index;
     }
 
@@ -43,53 +204,155 @@ public class CreateIndex implements Statement {
         this.table = table;
     }
 
-    public List<String> getTailParameters() {
-        return tailParameters;
+    /**
+     * Returns the mutable MySQL ALGORITHM and LOCK clauses in source order. They are rendered after
+     * the index options, as MySQL requires.
+     */
+    public List<AlgorithmOrLockOption> getAlgorithmOrLockOptions() {
+        return algorithmOrLockOptions;
     }
 
+    /** Copies the list membership and retains the option nodes; null clears the clauses. */
+    public void setAlgorithmOrLockOptions(List<AlgorithmOrLockOption> options) {
+        algorithmOrLockOptions.clear();
+        if (options != null) {
+            algorithmOrLockOptions.addAll(options);
+        }
+    }
+
+    public CreateIndex withAlgorithmOrLockOptions(List<AlgorithmOrLockOption> options) {
+        setAlgorithmOrLockOptions(options);
+        return this;
+    }
+
+    public CreateIndex addAlgorithmOrLockOptions(AlgorithmOrLockOption... options) {
+        Collections.addAll(algorithmOrLockOptions, options);
+        return this;
+    }
+
+    /**
+     * Returns an unmodifiable token snapshot of the trailing clauses: the index options after the
+     * key list ({@link Index#getSpecOptions()}), followed by {@link #getAlgorithmOrLockOptions()}.
+     * Edit those nodes instead of the snapshot.
+     */
+    public List<String> getTailParameters() {
+        List<String> tokens = new ArrayList<>();
+        IndexOptions options = getOptions();
+        if (options != null && options.getIndexSpec() != null) {
+            tokens.addAll(options.getIndexSpec());
+        }
+        for (AlgorithmOrLockOption option : algorithmOrLockOptions) {
+            tokens.addAll(option.getTokens());
+        }
+        return Collections.unmodifiableList(tokens);
+    }
+
+    /**
+     * Replaces the index options after the key list and the ALGORITHM and LOCK clauses with one
+     * opaque option holding a copy of the tokens, without parsing them. Null clears them.
+     */
     public void setTailParameters(List<String> tailParameters) {
-        this.tailParameters = tailParameters;
+        algorithmOrLockOptions.clear();
+        getOrCreateOptions().setIndexSpec(tailParameters);
     }
 
     @Override
     public String toString() {
-        StringBuilder buffer = new StringBuilder();
+        return appendTo(new StringBuilder()).toString();
+    }
 
-        buffer.append("CREATE ");
+    /** Shared rendering for the statement model and CreateIndexDeParser. */
+    public StringBuilder appendTo(StringBuilder buffer) {
+        return appendTo(buffer, expression -> buffer.append(expression));
+    }
 
-        if (index.getType() != null) {
-            buffer.append(index.getType());
-            buffer.append(" ");
-        }
-
-        buffer.append("INDEX ");
-        buffer.append(index.getName());
-        buffer.append(" ON ");
-        buffer.append(table.getFullyQualifiedName());
-
-        if (index.getUsing() != null) {
-            buffer.append(" USING ");
-            buffer.append(index.getUsing());
-        }
-
-        if (index.getColumnsNames() != null) {
-            buffer.append(" (");
-
-            buffer.append(
-                    index.getColumns().stream()
-                            .map(cp -> cp.columnName + (cp.getParams() != null ? " " + String.join(" ", cp.getParams()) : "")).collect(joining(", "))
-            );
-
-            buffer.append(")");
-
-            if (tailParameters != null) {
-                for (String param : tailParameters) {
-                    buffer.append(" ").append(param);
-                }
+    /** Shares rendering while allowing visitors to transform key and option expressions. */
+    public StringBuilder appendTo(StringBuilder buffer, Consumer<Expression> expressionPrinter) {
+        appendIndexHeader(buffer);
+        appendIndexTarget(buffer);
+        appendIndexColumns(buffer, expressionPrinter);
+        appendPostgreSqlTail(buffer, expressionPrinter);
+        if (index.getSpecOptions() != null) {
+            for (IndexSpecOption option : index.getSpecOptions()) {
+                buffer.append(" ").append(option);
             }
         }
+        for (AlgorithmOrLockOption option : algorithmOrLockOptions) {
+            buffer.append(" ").append(option);
+        }
+        return buffer;
+    }
 
-        return buffer.toString();
+    private void appendIndexHeader(StringBuilder buffer) {
+        buffer.append("CREATE ");
+        if (index.getType() != null) {
+            buffer.append(index.getType()).append(" ");
+        }
+        if (index.getClustering() != null) {
+            buffer.append(index.getClustering()).append(" ");
+        }
+        if (nullFiltered) {
+            buffer.append("NULL_FILTERED ");
+        }
+        buffer.append("INDEX ");
+        if (concurrently) {
+            buffer.append("CONCURRENTLY ");
+        }
+        if (usingIfNotExists) {
+            buffer.append("IF NOT EXISTS ");
+        }
+        if (index.getName() != null) {
+            buffer.append(index.getName()).append(" ");
+        }
+    }
+
+    private void appendIndexTarget(StringBuilder buffer) {
+        if (index.getUsing() != null && isIndexTypeBeforeOn()) {
+            buffer.append("USING ").append(index.getUsing()).append(" ");
+        }
+        buffer.append("ON ");
+        if (only) {
+            buffer.append("ONLY ");
+        }
+        buffer.append(table.getFullyQualifiedName());
+        if (index.getUsing() != null && !isIndexTypeBeforeOn()) {
+            buffer.append(" USING ").append(index.getUsing());
+        }
+    }
+
+    private void appendIndexColumns(StringBuilder buffer, Consumer<Expression> expressionPrinter) {
+        if (index.getColumns() != null) {
+            buffer.append(" (");
+            for (Iterator<KeyElement> columns = index.getColumns().iterator(); columns
+                    .hasNext();) {
+                columns.next().appendTo(buffer, expressionPrinter);
+                if (columns.hasNext()) {
+                    buffer.append(", ");
+                }
+            }
+            buffer.append(")");
+        }
+    }
+
+    private void appendPostgreSqlTail(StringBuilder buffer,
+            Consumer<Expression> expressionPrinter) {
+        if (getIncludeColumns() != null) {
+            buffer.append(" INCLUDE (").append(String.join(", ", getIncludeColumns())).append(")");
+        }
+        if (getNullsDistinct() != null) {
+            buffer.append(" NULLS ").append(getNullsDistinct() ? "DISTINCT" : "NOT DISTINCT");
+        }
+        if (getStorageParameters() != null) {
+            buffer.append(" WITH ");
+            IndexOption.appendListTo(buffer, getStorageParameters(), expressionPrinter);
+        }
+        if (getTableSpace() != null) {
+            buffer.append(" TABLESPACE ").append(getTableSpace());
+        }
+        if (where != null) {
+            buffer.append(" WHERE ");
+            expressionPrinter.accept(where);
+        }
     }
 
     public CreateIndex withTable(Table table) {
@@ -104,6 +367,41 @@ public class CreateIndex implements Statement {
 
     public CreateIndex withTailParameters(List<String> tailParameters) {
         this.setTailParameters(tailParameters);
+        return this;
+    }
+
+    public CreateIndex withConcurrently(boolean concurrently) {
+        setConcurrently(concurrently);
+        return this;
+    }
+
+    public CreateIndex withOnly(boolean only) {
+        setOnly(only);
+        return this;
+    }
+
+    public CreateIndex withIncludeColumns(List<String> includeColumns) {
+        setIncludeColumns(includeColumns);
+        return this;
+    }
+
+    public CreateIndex withNullsDistinct(Boolean nullsDistinct) {
+        setNullsDistinct(nullsDistinct);
+        return this;
+    }
+
+    public CreateIndex withStorageParameters(List<IndexOption> storageParameters) {
+        setStorageParameters(storageParameters);
+        return this;
+    }
+
+    public CreateIndex withTableSpace(String tableSpace) {
+        setTableSpace(tableSpace);
+        return this;
+    }
+
+    public CreateIndex withWhere(Expression where) {
+        setWhere(where);
         return this;
     }
 }

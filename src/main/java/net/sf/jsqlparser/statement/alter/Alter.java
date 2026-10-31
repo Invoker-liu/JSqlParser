@@ -12,19 +12,55 @@ package net.sf.jsqlparser.statement.alter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
 
-public class Alter implements Statement {
-
+public class Alter extends ASTNodeAccessImpl implements Statement {
     private Table table;
     private boolean useOnly = false;
-
+    private boolean useTableIfExists = false;
     private List<AlterExpression> alterExpressions;
+    private boolean useDescendants;
+    private boolean foreignTable;
+
+
+
+    public boolean isUseDescendants() {
+        return useDescendants;
+    }
+
+    public void setUseDescendants(boolean useDescendants) {
+        this.useDescendants = useDescendants;
+    }
+
+    public StringBuilder appendTargetTo(StringBuilder builder) {
+        builder.append(foreignTable ? "ALTER FOREIGN TABLE " : "ALTER TABLE ");
+        if (useTableIfExists) {
+            builder.append("IF EXISTS ");
+        }
+        if (useOnly) {
+            builder.append("ONLY ");
+        }
+        builder.append(table.getFullyQualifiedName());
+        if (useDescendants) {
+            builder.append(" *");
+        }
+        return builder.append(' ');
+    }
+
+
+    public boolean isForeignTable() {
+        return foreignTable;
+    }
+
+    public void setForeignTable(boolean foreignTable) {
+        this.foreignTable = foreignTable;
+    }
 
     public Table getTable() {
         return table;
@@ -40,6 +76,19 @@ public class Alter implements Statement {
 
     public void setUseOnly(boolean useOnly) {
         this.useOnly = useOnly;
+    }
+
+    public boolean isUseTableIfExists() {
+        return useTableIfExists;
+    }
+
+    public void setUseTableIfExists(boolean useTableIfExists) {
+        this.useTableIfExists = useTableIfExists;
+    }
+
+    public Alter withUseTableIfExists(boolean useTableIfExists) {
+        this.useTableIfExists = useTableIfExists;
+        return this;
     }
 
     public void addAlterExpression(AlterExpression alterExpression) {
@@ -58,38 +107,42 @@ public class Alter implements Statement {
     }
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     @Override
     public String toString() {
 
         StringBuilder b = new StringBuilder();
-        b.append("ALTER TABLE ");
-        if (useOnly) {
-            b.append("ONLY ");
-        }
+        appendTargetTo(b);
 
-        if (alterExpressions.size()>0 && alterExpressions.get(0).getOperation()==AlterOperation.RENAME_TABLE && alterExpressions.get(0).isUsingIfExists()) {
-            b.append("IF EXISTS ");
-        }
-
-        b.append(table.getFullyQualifiedName()).append(" ");
-
-        Iterator<AlterExpression> altIter = alterExpressions.iterator();
-
-        while (altIter.hasNext()) {
-            b.append(altIter.next().toString());
-
-            // Need to append whitespace after each ADD or DROP statement
-            // but not the last one
-            if (altIter.hasNext()) {
-                b.append(", ");
+        for (int i = 0; i < alterExpressions.size(); i++) {
+            AlterExpression action = alterExpressions.get(i);
+            if (i > 0) {
+                b.append(separatorBefore(action));
             }
+            b.append(action);
         }
 
         return b.toString();
+    }
+
+    /**
+     * Whether the action is MySQL's PARTITION BY or REMOVE PARTITIONING, which may end the action
+     * list without a comma.
+     */
+    public static boolean isTrailingPartitionOption(AlterExpression action) {
+        return action != null && (action.getOperation() == AlterOperation.PARTITION_BY
+                || action.getOperation() == AlterOperation.REMOVE_PARTITIONING);
+    }
+
+    /**
+     * The separator written before an action that follows another: a comma, or a space before
+     * PARTITION BY and REMOVE PARTITIONING, which MySQL does not accept after a comma.
+     */
+    public static String separatorBefore(AlterExpression action) {
+        return isTrailingPartitionOption(action) ? " " : ", ";
     }
 
     public Alter withTable(Table table) {
@@ -108,13 +161,15 @@ public class Alter implements Statement {
     }
 
     public Alter addAlterExpressions(AlterExpression... alterExpressions) {
-        List<AlterExpression> collection = Optional.ofNullable(getAlterExpressions()).orElseGet(ArrayList::new);
+        List<AlterExpression> collection =
+                Optional.ofNullable(getAlterExpressions()).orElseGet(ArrayList::new);
         Collections.addAll(collection, alterExpressions);
         return this.withAlterExpressions(collection);
     }
 
     public Alter addAlterExpressions(Collection<? extends AlterExpression> alterExpressions) {
-        List<AlterExpression> collection = Optional.ofNullable(getAlterExpressions()).orElseGet(ArrayList::new);
+        List<AlterExpression> collection =
+                Optional.ofNullable(getAlterExpressions()).orElseGet(ArrayList::new);
         collection.addAll(alterExpressions);
         return this.withAlterExpressions(collection);
     }

@@ -9,7 +9,11 @@
  */
 package net.sf.jsqlparser.statement;
 
-public class Block implements Statement {
+import java.util.function.Consumer;
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
+
+public class Block extends ASTNodeAccessImpl implements Statement {
+    private boolean hasSemicolonAfterEnd = false;
 
     private Statements statements;
 
@@ -21,14 +25,38 @@ public class Block implements Statement {
         this.statements = statements;
     }
 
+    public boolean hasSemicolonAfterEnd() {
+        return hasSemicolonAfterEnd;
+    }
+
+    public void setSemicolonAfterEnd(boolean hasSemicolonAfterEnd) {
+        this.hasSemicolonAfterEnd = hasSemicolonAfterEnd;
+    }
+
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
+    }
+
+    public StringBuilder appendTo(StringBuilder builder) {
+        return appendTo(builder, builder::append);
+    }
+
+    public StringBuilder appendTo(StringBuilder builder, Consumer<Statements> statementsPrinter) {
+        builder.append("BEGIN\n");
+        if (statements != null) {
+            statementsPrinter.accept(statements);
+        }
+        builder.append("END");
+        if (hasSemicolonAfterEnd) {
+            builder.append(";");
+        }
+        return builder;
     }
 
     @Override
     public String toString() {
-        return "BEGIN\n" + (statements != null ? statements.toString() : "") + "END";
+        return appendTo(new StringBuilder()).toString();
     }
 
     public Block withStatements(Statements statements) {

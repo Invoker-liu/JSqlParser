@@ -9,22 +9,25 @@
  */
 package net.sf.jsqlparser.statement.comment;
 
+import java.util.function.Consumer;
 import net.sf.jsqlparser.expression.StringValue;
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
 
-public class Comment implements Statement {
+public class Comment extends ASTNodeAccessImpl implements Statement {
 
     private Table table;
     private Column column;
     private Table view;
+    private CommentTarget target;
     private StringValue comment;
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     public Table getTable() {
@@ -33,6 +36,9 @@ public class Comment implements Statement {
 
     public void setTable(Table table) {
         this.table = table;
+        if (table != null) {
+            target = null;
+        }
     }
 
     public Column getColumn() {
@@ -41,6 +47,9 @@ public class Comment implements Statement {
 
     public void setColumn(Column column) {
         this.column = column;
+        if (column != null) {
+            target = null;
+        }
     }
 
     public Table getView() {
@@ -49,6 +58,39 @@ public class Comment implements Statement {
 
     public void setView(Table view) {
         this.view = view;
+        if (view != null) {
+            target = null;
+        }
+    }
+
+    /** Additional catalog targets; the existing table, column and view accessors remain intact. */
+    public CommentTarget getTarget() {
+        return target;
+    }
+
+    public void setTarget(CommentTarget target) {
+        this.target = target;
+        if (target != null) {
+            table = null;
+            column = null;
+            view = null;
+        }
+    }
+
+    public Comment withTarget(CommentTarget target) {
+        setTarget(target);
+        return this;
+    }
+
+    /** Visits the relation explicitly named by this comment, without resolving catalog objects. */
+    public void visitRelations(Consumer<Table> visitor) {
+        Table relation = table != null ? table
+                : column != null ? column.getTable()
+                        : view != null ? view
+                                : target != null ? target.getReferencedRelation() : null;
+        if (relation != null) {
+            visitor.accept(relation);
+        }
     }
 
     public StringValue getComment() {
@@ -61,16 +103,37 @@ public class Comment implements Statement {
 
     @Override
     public String toString() {
-        String sql = "COMMENT ON ";
+        StringBuilder builder = new StringBuilder();
+        return appendTo(builder, builder::append, builder::append, builder::append).toString();
+    }
+
+    public StringBuilder appendTo(StringBuilder builder, Consumer<Table> relationWriter,
+            Consumer<Column> columnWriter, Consumer<StringValue> commentWriter) {
+        builder.append("COMMENT ON ");
         if (table != null) {
-            sql += "TABLE " + table + " ";
+            builder.append("TABLE ");
+            relationWriter.accept(table);
+            builder.append(' ');
         } else if (column != null) {
-            sql += "COLUMN " + column + " ";
+            builder.append("COLUMN ");
+            columnWriter.accept(column);
+            builder.append(' ');
         } else if (view != null) {
-            sql += "VIEW " + view + " ";
+            builder.append("VIEW ");
+            relationWriter.accept(view);
+            builder.append(' ');
+        } else if (target != null) {
+            target.appendTo(builder, relationWriter);
+            builder.append(' ');
         }
-        sql += "IS " + comment;
-        return sql;
+        // a null comment stands for PostgreSQL's COMMENT ON ... IS NULL, which removes the comment
+        builder.append("IS ");
+        if (comment == null) {
+            builder.append("NULL");
+        } else {
+            commentWriter.accept(comment);
+        }
+        return builder;
     }
 
     public Comment withTable(Table table) {

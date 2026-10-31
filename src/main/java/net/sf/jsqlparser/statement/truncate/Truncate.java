@@ -9,51 +9,228 @@
  */
 package net.sf.jsqlparser.statement.truncate;
 
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.List;
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 import net.sf.jsqlparser.schema.Table;
+import net.sf.jsqlparser.schema.TableReference;
+import net.sf.jsqlparser.statement.CascadeBehavior;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
 
-public class Truncate implements Statement {
-
-    private Table table;
-    boolean cascade;  // to support TRUNCATE TABLE ... CASCADE
-
-    @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+public class Truncate extends ASTNodeAccessImpl implements Statement {
+    public enum IdentityOption {
+        RESTART, CONTINUE
     }
 
+    public enum StorageOption {
+        DROP, DROP_ALL, REUSE
+    }
+
+    public enum MaterializedViewLogOption {
+        PRESERVE, PURGE
+    }
+
+    private boolean tableToken;
+    private boolean only;
+    private final List<TableReference> targets = new ArrayList<>();
+    private IdentityOption identityOption;
+    private CascadeBehavior dropBehavior;
+    private StorageOption storageOption;
+    private MaterializedViewLogOption materializedViewLogOption;
+
+    @Override
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
+    }
+
+    public List<TableReference> getTargets() {
+        return targets;
+    }
+
+    public void setTargets(List<TableReference> references) {
+        List<TableReference> replacement = new ArrayList<>(references);
+        targets.clear();
+        targets.addAll(replacement);
+    }
+
+    /** Preserves the legacy parser's singular accessor for the last target. */
     public Table getTable() {
-        return table;
+        return targets.isEmpty() ? null : targets.get(targets.size() - 1).getTable();
     }
 
     public void setTable(Table table) {
-        this.table = table;
+        if (targets.isEmpty()) {
+            TableReference target = new TableReference(table);
+            target.setOnly(only);
+            targets.add(target);
+        } else {
+            targets.get(targets.size() - 1).setTable(table);
+        }
+    }
+
+    /** Mutable table projection; replacing a table preserves its target's inheritance scope. */
+    public List<Table> getTables() {
+        return new AbstractList<Table>() {
+            @Override
+            public Table get(int index) {
+                return targets.get(index).getTable();
+            }
+
+            @Override
+            public int size() {
+                return targets.size();
+            }
+
+            @Override
+            public Table set(int index, Table table) {
+                Table previous = get(index);
+                targets.get(index).setTable(table);
+                return previous;
+            }
+
+            @Override
+            public void add(int index, Table table) {
+                targets.add(index, new TableReference(table));
+            }
+
+            @Override
+            public Table remove(int index) {
+                return targets.remove(index).getTable();
+            }
+        };
+    }
+
+    public void setTables(List<Table> tables) {
+        List<Table> replacement = tables == null ? new ArrayList<>() : new ArrayList<>(tables);
+        boolean firstOnly = isOnly();
+        targets.clear();
+        replacement.forEach(table -> targets.add(new TableReference(table)));
+        setOnly(firstOnly);
+    }
+
+    public IdentityOption getIdentityOption() {
+        return identityOption;
+    }
+
+    public void setIdentityOption(IdentityOption option) {
+        identityOption = option;
+    }
+
+    public StorageOption getStorageOption() {
+        return storageOption;
+    }
+
+    public void setStorageOption(StorageOption storageOption) {
+        this.storageOption = storageOption;
+    }
+
+    public Truncate withStorageOption(StorageOption storageOption) {
+        setStorageOption(storageOption);
+        return this;
+    }
+
+    public MaterializedViewLogOption getMaterializedViewLogOption() {
+        return materializedViewLogOption;
+    }
+
+    public void setMaterializedViewLogOption(MaterializedViewLogOption option) {
+        materializedViewLogOption = option;
+    }
+
+    public Truncate withMaterializedViewLogOption(MaterializedViewLogOption option) {
+        setMaterializedViewLogOption(option);
+        return this;
+    }
+
+    public CascadeBehavior getDropBehavior() {
+        return dropBehavior;
+    }
+
+    public void setDropBehavior(CascadeBehavior behavior) {
+        dropBehavior = behavior;
     }
 
     public boolean getCascade() {
-        return cascade;
+        return dropBehavior == CascadeBehavior.CASCADE;
     }
 
-    public void setCascade(boolean c) {
-        cascade = c;
+    public void setCascade(boolean cascade) {
+        dropBehavior = cascade ? CascadeBehavior.CASCADE : null;
+    }
+
+    public boolean isTableToken() {
+        return tableToken;
+    }
+
+    public void setTableToken(boolean tableToken) {
+        this.tableToken = tableToken;
+    }
+
+    /** Legacy ONLY accessor describes the first target. */
+    public boolean isOnly() {
+        return targets.isEmpty() ? only : targets.get(0).isOnly();
+    }
+
+    public void setOnly(boolean only) {
+        this.only = only;
+        if (!targets.isEmpty()) {
+            targets.get(0).setOnly(only);
+        }
+    }
+
+    public StringBuilder appendTo(StringBuilder builder) {
+        builder.append(tableToken ? "TRUNCATE TABLE " : "TRUNCATE ");
+        for (int i = 0; i < targets.size(); i++) {
+            if (i > 0) {
+                builder.append(", ");
+            }
+            targets.get(i).appendTo(builder);
+        }
+        if (materializedViewLogOption != null) {
+            builder.append(' ').append(materializedViewLogOption).append(" MATERIALIZED VIEW LOG");
+        }
+        if (storageOption != null) {
+            builder.append(' ').append(storageOption == StorageOption.DROP_ALL ? "DROP ALL"
+                    : storageOption.name()).append(" STORAGE");
+        }
+        if (identityOption != null) {
+            builder.append(' ').append(identityOption).append(" IDENTITY");
+        }
+        if (dropBehavior != null) {
+            builder.append(' ').append(dropBehavior);
+        }
+        return builder;
     }
 
     @Override
     public String toString() {
-        if (cascade) {
-            return "TRUNCATE TABLE " + table + " CASCADE";
-        }
-        return "TRUNCATE TABLE " + table;
+        return appendTo(new StringBuilder()).toString();
     }
 
-    public Truncate withTable(Table table) {
-        this.setTable(table);
+    public Truncate withTableToken(boolean value) {
+        setTableToken(value);
         return this;
     }
 
-    public Truncate withCascade(boolean cascade) {
-        this.setCascade(cascade);
+    public Truncate withTable(Table value) {
+        setTable(value);
+        return this;
+    }
+
+    public Truncate withTables(List<Table> value) {
+        setTables(value);
+        return this;
+    }
+
+    public Truncate withCascade(boolean value) {
+        setCascade(value);
+        return this;
+    }
+
+    public Truncate withOnly(boolean value) {
+        setOnly(value);
         return this;
     }
 }

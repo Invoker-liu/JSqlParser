@@ -9,8 +9,9 @@
  */
 package net.sf.jsqlparser.statement.create.table;
 
-import java.util.Collection;
 import java.util.List;
+import java.util.function.Consumer;
+
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.Table;
 
@@ -19,6 +20,17 @@ public class CheckConstraint extends NamedConstraint {
     private Table table;
 
     private Expression expression;
+
+    private boolean noInherit;
+
+    public CheckConstraint() {
+        setType("CHECK");
+    }
+
+    @Override
+    public ConstraintKind getKind() {
+        return ConstraintKind.CHECK;
+    }
 
     public Table getTable() {
         return table;
@@ -36,9 +48,51 @@ public class CheckConstraint extends NamedConstraint {
         this.expression = expression;
     }
 
+    /** Whether PostgreSQL should keep this CHECK from being inherited by child tables. */
+    public boolean isNoInherit() {
+        return noInherit;
+    }
+
+    public void setNoInherit(boolean noInherit) {
+        this.noInherit = noInherit;
+    }
+
+    public CheckConstraint withNoInherit(boolean noInherit) {
+        setNoInherit(noInherit);
+        return this;
+    }
+
+    public Boolean getEnforced() {
+        return getConstraintAttributes() == null ? null : getConstraintAttributes().getEnforced();
+    }
+
+    public void setEnforced(Boolean enforced) {
+        ConstraintAttributes attributes = getConstraintAttributes();
+        if (attributes == null) {
+            if (enforced == null) {
+                return;
+            }
+            attributes = new ConstraintAttributes();
+            setConstraintAttributes(attributes);
+        }
+        attributes.setEnforced(enforced);
+    }
+
     @Override
-    public String toString() {
-        return "CONSTRAINT " + getName() + " CHECK (" + expression + ")";
+    public void appendTo(StringBuilder b, Consumer<Expression> expressionPrinter) {
+        appendConstraintPrefixTo(b);
+        b.append("CHECK (");
+        if (expression == null) {
+            b.append("null");
+        } else {
+            expressionPrinter.accept(expression);
+        }
+        b.append(')');
+        if (noInherit) {
+            b.append(" NO INHERIT");
+        }
+        appendConstraintSuffixTo(b);
+        appendConstraintAttributesTo(b);
     }
 
     public CheckConstraint withTable(Table table) {
@@ -48,6 +102,11 @@ public class CheckConstraint extends NamedConstraint {
 
     public CheckConstraint withExpression(Expression expression) {
         this.setExpression(expression);
+        return this;
+    }
+
+    public CheckConstraint withEnforced(Boolean enforced) {
+        setEnforced(enforced);
         return this;
     }
 
@@ -61,8 +120,8 @@ public class CheckConstraint extends NamedConstraint {
     }
 
     @Override
-    public CheckConstraint withUsing(String using) {
-        return (CheckConstraint) super.withUsing(using);
+    public CheckConstraint withUseConstraintKeyword(boolean useConstraintKeyword) {
+        return (CheckConstraint) super.withUseConstraintKeyword(useConstraintKeyword);
     }
 
     @Override
@@ -73,31 +132,6 @@ public class CheckConstraint extends NamedConstraint {
     @Override
     public CheckConstraint withName(String name) {
         return (CheckConstraint) super.withName(name);
-    }
-
-    @Override
-    public CheckConstraint withColumnsNames(List<String> list) {
-        return (CheckConstraint) super.withColumnsNames(list);
-    }
-
-    @Override
-    public CheckConstraint withColumns(List<ColumnParams> columns) {
-        return (CheckConstraint) super.withColumns(columns);
-    }
-
-    @Override
-    public CheckConstraint addColumns(ColumnParams... functionDeclarationParts) {
-        return (CheckConstraint) super.addColumns(functionDeclarationParts);
-    }
-
-    @Override
-    public CheckConstraint addColumns(Collection<? extends ColumnParams> functionDeclarationParts) {
-        return (CheckConstraint) super.addColumns(functionDeclarationParts);
-    }
-
-    @Override
-    public CheckConstraint withIndexSpec(List<String> idxSpec) {
-        return (CheckConstraint) super.withIndexSpec(idxSpec);
     }
 
 }

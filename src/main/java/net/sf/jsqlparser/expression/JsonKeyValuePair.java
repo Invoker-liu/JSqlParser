@@ -10,117 +10,186 @@
 
 package net.sf.jsqlparser.expression;
 
+import java.io.Serializable;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
- *
  * @author <a href="mailto:andreas@manticore-projects.com">Andreas Reichel</a>
  */
 
-public class JsonKeyValuePair {
-  private final String key;
-  private boolean usingKeyKeyword = false;
-  private final Object value;
-  private boolean usingValueKeyword = false;
-  private boolean usingFormatJson = false;
+public class JsonKeyValuePair implements Serializable {
+    private final Object key;
+    private final Object value;
+    private boolean usingKeyKeyword;
+    private JsonKeyValuePairSeparator separator;
+    private boolean usingFormatJson = false;
+    private String encoding;
 
-  public JsonKeyValuePair(String key, Object value, boolean usingKeyKeyword,
-      boolean usingValueKeyword) {
-    this.key = Objects.requireNonNull(key, "The KEY of the Pair must not be null");
-    this.value = value;
-    this.usingKeyKeyword = usingKeyKeyword;
-    this.usingValueKeyword = usingValueKeyword;
-  }
-
-  public boolean isUsingKeyKeyword() {
-    return usingKeyKeyword;
-  }
-
-  public void setUsingKeyKeyword(boolean usingKeyKeyword) {
-    this.usingKeyKeyword = usingKeyKeyword;
-  }
-
-  public JsonKeyValuePair withUsingKeyKeyword(boolean usingKeyKeyword) {
-    this.setUsingKeyKeyword(usingKeyKeyword);
-    return this;
-  }
-
-  public boolean isUsingValueKeyword() {
-    return usingValueKeyword;
-  }
-
-  public void setUsingValueKeyword(boolean usingValueKeyword) {
-    this.usingValueKeyword = usingValueKeyword;
-  }
-
-  public JsonKeyValuePair withUsingValueKeyword(boolean usingValueKeyword) {
-    this.setUsingValueKeyword(usingValueKeyword);
-    return this;
-  }
-
-  public boolean isUsingFormatJson() {
-    return usingFormatJson;
-  }
-
-  public void setUsingFormatJson(boolean usingFormatJson) {
-    this.usingFormatJson = usingFormatJson;
-  }
-
-  public JsonKeyValuePair withUsingFormatJson(boolean usingFormatJson) {
-    this.setUsingFormatJson(usingFormatJson);
-    return this;
-  }
-
-  @Override
-  public int hashCode() {
-    int hash = 7;
-    hash = 83 * hash + Objects.hashCode(this.key);
-    return hash;
-  }
-
-  @Override
-  public boolean equals(Object obj) {
-    if (this == obj) {
-      return true;
-    }
-    if (obj == null) {
-      return false;
-    }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    final JsonKeyValuePair other = (JsonKeyValuePair) obj;
-    return Objects.equals(this.key, other.key);
-  }
-
-  public String getKey() {
-    return key;
-  }
-
-  public Object getValue() {
-    return value;
-  }
-
-  public StringBuilder append(StringBuilder builder) {
-    if (isUsingValueKeyword()) {
-      if (isUsingKeyKeyword()) {
-        builder.append("KEY ");
-      }
-      builder.append(getKey()).append(" VALUE ").append(getValue());
-    } else {
-      builder.append(getKey()).append(":").append(getValue());
+    /**
+     * Please use the Constructor with {@link JsonKeyValuePairSeparator} parameter.
+     */
+    @Deprecated
+    public JsonKeyValuePair(Object key, Object value, boolean usingKeyKeyword,
+            boolean usingValueKeyword) {
+        this(key, value, usingKeyKeyword, usingValueKeyword ? JsonKeyValuePairSeparator.VALUE
+                : JsonKeyValuePairSeparator.COLON);
     }
 
-    if (isUsingFormatJson()) {
-      builder.append(" FORMAT JSON");
+    public JsonKeyValuePair(Object key, Object value, boolean usingKeyKeyword,
+            JsonKeyValuePairSeparator separator) {
+        this.key = Objects.requireNonNull(key, "The KEY of the Pair must not be null");
+        this.value = value;
+        this.usingKeyKeyword = usingKeyKeyword;
+        this.separator =
+                Objects.requireNonNull(separator, "The KeyValuePairSeparator must not be NULL");
     }
 
-    return builder;
-  }
+    public boolean isUsingKeyKeyword() {
+        return usingKeyKeyword;
+    }
 
-  @Override
-  public String toString() {
-    return append(new StringBuilder()).toString();
-  }
+    public void setUsingKeyKeyword(boolean usingKeyKeyword) {
+        this.usingKeyKeyword = usingKeyKeyword;
+    }
+
+    public JsonKeyValuePair withUsingKeyKeyword(boolean usingKeyKeyword) {
+        this.setUsingKeyKeyword(usingKeyKeyword);
+        return this;
+    }
+
+    /**
+     * Use {@link #getSeparator()}
+     */
+    @Deprecated
+    public boolean isUsingValueKeyword() {
+        return separator == JsonKeyValuePairSeparator.VALUE;
+    }
+
+    /**
+     * Use {@link #setSeparator(JsonKeyValuePairSeparator)}
+     */
+    @Deprecated
+    public void setUsingValueKeyword(boolean usingValueKeyword) {
+        separator = usingValueKeyword ? JsonKeyValuePairSeparator.VALUE
+                : JsonKeyValuePairSeparator.COLON;
+    }
+
+    /**
+     * Use {@link #withSeparator(JsonKeyValuePairSeparator)}
+     */
+    @Deprecated
+    public JsonKeyValuePair withUsingValueKeyword(boolean usingValueKeyword) {
+        this.setUsingValueKeyword(usingValueKeyword);
+        return this;
+    }
+
+    public JsonKeyValuePairSeparator getSeparator() {
+        return separator;
+    }
+
+    public void setSeparator(JsonKeyValuePairSeparator separator) {
+        this.separator = separator;
+    }
+
+    public JsonKeyValuePair withSeparator(JsonKeyValuePairSeparator separator) {
+        this.setSeparator(separator);
+        return this;
+    }
+
+    public boolean isUsingFormatJson() {
+        return usingFormatJson;
+    }
+
+    public void setUsingFormatJson(boolean usingFormatJson) {
+        this.usingFormatJson = usingFormatJson;
+    }
+
+    public JsonKeyValuePair withUsingFormatJson(boolean usingFormatJson) {
+        this.setUsingFormatJson(usingFormatJson);
+        return this;
+    }
+
+    public String getEncoding() {
+        return encoding;
+    }
+
+    public void setEncoding(String encoding) {
+        this.encoding = encoding;
+    }
+
+    public JsonKeyValuePair withEncoding(String encoding) {
+        this.setEncoding(encoding);
+        return this;
+    }
+
+    @Override
+    public int hashCode() {
+        int hash = 7;
+        hash = 83 * hash + Objects.hashCode(this.key);
+        return hash;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null) {
+            return false;
+        }
+        if (getClass() != obj.getClass()) {
+            return false;
+        }
+        final JsonKeyValuePair other = (JsonKeyValuePair) obj;
+        return Objects.equals(this.key, other.key);
+    }
+
+    public Object getKey() {
+        return key;
+    }
+
+    public Object getValue() {
+        return value;
+    }
+
+    public StringBuilder append(StringBuilder builder) {
+        return appendTo(builder, builder::append);
+    }
+
+    public StringBuilder appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
+        if (isUsingKeyKeyword() && getSeparator() == JsonKeyValuePairSeparator.VALUE) {
+            builder.append("KEY ");
+        }
+        appendValue(builder, getKey(), expressionPrinter);
+
+        if (getValue() != null) {
+            builder.append(getSeparator().getSeparatorString());
+            appendValue(builder, getValue(), expressionPrinter);
+        }
+
+        if (isUsingFormatJson()) {
+            builder.append(" FORMAT JSON");
+            if (encoding != null) {
+                builder.append(" ENCODING ").append(encoding);
+            }
+        }
+
+        return builder;
+    }
+
+    private static void appendValue(StringBuilder builder, Object value,
+            Consumer<Expression> expressionPrinter) {
+        if (value instanceof Expression) {
+            expressionPrinter.accept((Expression) value);
+        } else {
+            builder.append(value);
+        }
+    }
+
+    @Override
+    public String toString() {
+        return append(new StringBuilder()).toString();
+    }
 
 }

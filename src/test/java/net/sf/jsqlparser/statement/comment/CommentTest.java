@@ -48,7 +48,8 @@ public class CommentTest {
         String statement = "COMMENT ON TABLE table1 IS 'comment1'";
         assertSqlCanBeParsedAndDeparsed(statement);
 
-        Comment c = new Comment().withTable(new Table("table1")).withComment(new StringValue("comment1"));
+        Comment c = new Comment().withTable(new Table("table1"))
+                .withComment(new StringValue("comment1"));
         assertEquals("table1", c.getTable().getName());
         assertEquals("comment1", c.getComment().getValue());
         assertDeparse(c, statement, false);
@@ -77,17 +78,48 @@ public class CommentTest {
     @Test
     public void testToString() {
         Comment comment = new Comment();
-        assertEquals("COMMENT ON IS null", comment.toString());
+        assertEquals("COMMENT ON IS NULL", comment.toString());
+    }
+
+    @Test
+    public void testCommentTableIsNull() throws JSQLParserException {
+        String statement = "COMMENT ON TABLE schema1.table1 IS NULL";
+        Comment comment = (Comment) CCJSqlParserUtil.parse(statement);
+        assertEquals("table1", comment.getTable().getName());
+        assertThat(comment.getComment()).isNull();
+        assertSqlCanBeParsedAndDeparsed(statement);
+    }
+
+    @Test
+    public void testCommentColumnIsNull() throws JSQLParserException {
+        String statement = "COMMENT ON COLUMN table1.column1 IS NULL";
+        Comment comment = (Comment) CCJSqlParserUtil.parse(statement);
+        assertEquals("column1", comment.getColumn().getColumnName());
+        assertThat(comment.getComment()).isNull();
+        assertSqlCanBeParsedAndDeparsed(statement);
+    }
+
+    @Test
+    public void testCommentViewIsNull() throws JSQLParserException {
+        assertSqlCanBeParsedAndDeparsed("COMMENT ON VIEW myschema.myView IS NULL");
+    }
+
+    @Test
+    public void testCommentIsNullLowercase() throws JSQLParserException {
+        Comment comment = (Comment) CCJSqlParserUtil.parse("comment on table table1 is null");
+        assertThat(comment.getComment()).isNull();
     }
 
     @Test
     public void testCommentColumnDeparseIssue696() throws JSQLParserException {
-        assertSqlCanBeParsedAndDeparsed("COMMENT ON COLUMN hotels.hotelid IS 'Primary key of the table'");
+        assertSqlCanBeParsedAndDeparsed(
+                "COMMENT ON COLUMN hotels.hotelid IS 'Primary key of the table'");
     }
 
     @Test
     public void testCommentTableColumnDiffersIssue984() throws JSQLParserException {
-        Comment comment = (Comment) CCJSqlParserUtil.parse("COMMENT ON COLUMN myTable.myColumn is 'Some comment'");
+        Comment comment = (Comment) CCJSqlParserUtil
+                .parse("COMMENT ON COLUMN myTable.myColumn is 'Some comment'");
         assertThat(comment.getTable()).isNull();
         assertThat(comment.getColumn().getColumnName()).isEqualTo("myColumn");
         assertThat(comment.getColumn().getTable().getFullyQualifiedName()).isEqualTo("myTable");
@@ -95,10 +127,12 @@ public class CommentTest {
 
     @Test
     public void testCommentTableColumnDiffersIssue984_2() throws JSQLParserException {
-        Comment comment = (Comment) CCJSqlParserUtil.parse("COMMENT ON COLUMN mySchema.myTable.myColumn is 'Some comment'");
+        Comment comment = (Comment) CCJSqlParserUtil
+                .parse("COMMENT ON COLUMN mySchema.myTable.myColumn is 'Some comment'");
         assertThat(comment.getTable()).isNull();
         assertThat(comment.getColumn().getColumnName()).isEqualTo("myColumn");
-        assertThat(comment.getColumn().getTable().getFullyQualifiedName()).isEqualTo("mySchema.myTable");
+        assertThat(comment.getColumn().getTable().getFullyQualifiedName())
+                .isEqualTo("mySchema.myTable");
         assertThat(comment.getColumn().getTable().getName()).isEqualTo("myTable");
         assertThat(comment.getColumn().getTable().getSchemaName()).isEqualTo("mySchema");
     }

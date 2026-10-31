@@ -14,27 +14,34 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
+import net.sf.jsqlparser.statement.create.database.DatabaseOption;
 
-public class CreateSchema implements Statement {
+public class CreateSchema extends ASTNodeAccessImpl implements Statement {
 
     private String authorization;
+    private String catalogName = null;
     private String schemaName;
     private List<String> schemaPath;
     private List<Statement> statements = new ArrayList<>();
+    private List<DatabaseOption> databaseOptions;
+    private boolean hasIfNotExists = false;
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     /**
-     * Add a statement to the schema definition
+     * Add a schema element, for example a CREATE TABLE or GRANT statement, to the schema definition
      *
      * @param statement The statement to be added
      * @return true if the operation was successful
-     *
      */
     public boolean addStatement(Statement statement) {
         return statements.add(statement);
@@ -44,10 +51,27 @@ public class CreateSchema implements Statement {
      * The owner of the schema.
      *
      * @return Owner name
-     *
      */
     public String getAuthorization() {
         return authorization;
+    }
+
+    /**
+     * The owner of the schems.
+     *
+     * @param authorization Owner name
+     */
+    public void setAuthorization(String authorization) {
+        this.authorization = authorization;
+    }
+
+    public String getCatalogName() {
+        return catalogName;
+    }
+
+    public CreateSchema setCatalogName(String catalogName) {
+        this.catalogName = catalogName;
+        return this;
     }
 
     /**
@@ -60,59 +84,105 @@ public class CreateSchema implements Statement {
     }
 
     /**
-     * The path of the schema
-     *
-     * @return Schema path
-     *
-     */
-    public List<String> getSchemaPath() {
-        return schemaPath;
-    }
-
-    /**
-     * The statements executed as part of the schema creation
-     *
-     * @return the statements
-     *
-     */
-    public List<Statement> getStatements() {
-        return statements;
-    }
-
-    /**
-     * The owner of the schems.
-     *
-     * @param authorization Owner name
-     *
-     */
-    public void setAuthorization(String authorization) {
-        this.authorization = authorization;
-    }
-
-    /**
      * Set the name of the schema
      *
      * @param schemaName Schema name
-     *
      */
     public void setSchemaName(String schemaName) {
         this.schemaName = schemaName;
     }
 
     /**
+     * The path of the schema
+     *
+     * @return Schema path
+     */
+    public List<String> getSchemaPath() {
+        return schemaPath;
+    }
+
+    /**
      * Set the path of the schema
      *
      * @param schemaPath Schema path
-     *
      */
     public void setSchemaPath(List<String> schemaPath) {
         this.schemaPath = schemaPath;
     }
 
+    /**
+     * The schema elements created as part of the schema, in source order. Their names are kept as
+     * written; unqualified names refer to the new schema.
+     *
+     * @return the statements
+     */
+    public List<Statement> getStatements() {
+        return statements;
+    }
+
+    public List<DatabaseOption> getDatabaseOptions() {
+        return databaseOptions;
+    }
+
+    public void setDatabaseOptions(List<DatabaseOption> databaseOptions) {
+        this.databaseOptions = databaseOptions;
+    }
+
+    public Optional<DatabaseOption> getDatabaseOption(DatabaseOption.Kind kind) {
+        return Optional.ofNullable(databaseOptions).orElseGet(Collections::emptyList).stream()
+                .filter(option -> option.getKind() == kind).findFirst();
+    }
+
+    public boolean hasIfNotExists() {
+        return hasIfNotExists;
+    }
+
+    public CreateSchema setIfNotExists(boolean hasIfNotExists) {
+        this.hasIfNotExists = hasIfNotExists;
+        return this;
+    }
+
+    @Override
     public String toString() {
+        StringBuilder builder = new StringBuilder();
+        return appendTo(builder, builder::append).toString();
+    }
+
+    /**
+     * Appends the schema definition, rendering each schema element with the given writer.
+     *
+     * @param builder the target
+     * @param elementWriter renders one schema element
+     * @return the target
+     */
+    public StringBuilder appendTo(StringBuilder builder, Consumer<Statement> elementWriter) {
+        builder.append(headerSql());
+        if (schemaPath != null && !schemaPath.isEmpty()) {
+            builder.append(" PATH ").append(String.join(", ", schemaPath));
+        }
+        for (Statement statement : statements) {
+            builder.append(' ');
+            elementWriter.accept(statement);
+        }
+        return builder;
+    }
+
+    private String headerSql() {
         String sql = "CREATE SCHEMA";
+        if (hasIfNotExists) {
+            sql += " IF NOT EXISTS";
+        }
         if (schemaName != null) {
-            sql += " " + schemaName;
+            sql += " ";
+
+            if (catalogName != null) {
+                sql += catalogName + ".";
+            }
+            sql += schemaName;
+        }
+        if (databaseOptions != null && !databaseOptions.isEmpty()) {
+            sql += " " + databaseOptions.stream().map(Object::toString)
+                    .collect(Collectors.joining(" "));
         }
         if (authorization != null) {
             sql += " AUTHORIZATION " + authorization;
@@ -133,6 +203,18 @@ public class CreateSchema implements Statement {
     public CreateSchema withSchemaPath(List<String> schemaPath) {
         this.setSchemaPath(schemaPath);
         return this;
+    }
+
+    public CreateSchema withDatabaseOptions(List<DatabaseOption> databaseOptions) {
+        setDatabaseOptions(databaseOptions);
+        return this;
+    }
+
+    public CreateSchema addDatabaseOptions(DatabaseOption... databaseOptions) {
+        List<DatabaseOption> collection =
+                Optional.ofNullable(getDatabaseOptions()).orElseGet(ArrayList::new);
+        Collections.addAll(collection, databaseOptions);
+        return withDatabaseOptions(collection);
     }
 
     public CreateSchema addSchemaPath(String... schemaPath) {

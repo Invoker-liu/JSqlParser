@@ -23,6 +23,14 @@ public class SetStatementValidator extends AbstractValidator<SetStatement> {
     public void validate(SetStatement set) {
         for (ValidationCapability c : getCapabilities()) {
             validateFeature(c, Feature.set);
+            if (set.getOnOffOptions() != null) {
+                validateFeature(c, Feature.sqlServerSetOptions);
+            }
+            for (int i = 0; i < set.getCount(); i++) {
+                if (set.getAssignmentOperator(i) == SetStatement.AssignmentOperator.TO) {
+                    validateFeature(c, Feature.setAssignmentTo);
+                }
+            }
         }
         for (int i = 0; i < set.getCount(); i++) {
             validateOptionalExpressions(set.getExpressions(i));

@@ -9,6 +9,7 @@
  */
 package net.sf.jsqlparser.statement.create.synonym;
 
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 import net.sf.jsqlparser.schema.Synonym;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
@@ -16,19 +17,19 @@ import net.sf.jsqlparser.statement.StatementVisitor;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CreateSynonym implements Statement {
+public class CreateSynonym extends ASTNodeAccessImpl implements Statement {
 
+    public Synonym synonym;
     private boolean orReplace;
     private boolean publicSynonym;
-    public Synonym synonym;
     private List<String> forList = new ArrayList<>();
-
-    public void setSynonym(Synonym synonym) {
-        this.synonym = synonym;
-    }
 
     public Synonym getSynonym() {
         return synonym;
+    }
+
+    public void setSynonym(Synonym synonym) {
+        this.synonym = synonym;
     }
 
     public boolean isOrReplace() {
@@ -47,12 +48,12 @@ public class CreateSynonym implements Statement {
         this.publicSynonym = publicSynonym;
     }
 
-    public void setForList(List<String> forList) {
-        this.forList = forList;
-    }
-
     public List<String> getForList() {
         return forList;
+    }
+
+    public void setForList(List<String> forList) {
+        this.forList = forList;
     }
 
     public String getFor() {
@@ -67,8 +68,8 @@ public class CreateSynonym implements Statement {
     }
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     @Override

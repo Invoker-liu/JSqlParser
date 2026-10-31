@@ -9,8 +9,12 @@
  */
 package net.sf.jsqlparser.expression;
 
+import java.util.Locale;
+
 public enum AnalyticType {
-    OVER,
-    WITHIN_GROUP,
-    FILTER_ONLY
+    OVER, WITHIN_GROUP, WITHIN_GROUP_OVER, FILTER_ONLY;
+
+    public static AnalyticType from(String type) {
+        return Enum.valueOf(AnalyticType.class, type.toUpperCase(Locale.ROOT));
+    }
 }

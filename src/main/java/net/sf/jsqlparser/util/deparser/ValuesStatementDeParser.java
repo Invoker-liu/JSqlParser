@@ -9,21 +9,38 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
-import net.sf.jsqlparser.expression.operators.relational.ItemsListVisitor;
-import net.sf.jsqlparser.statement.values.ValuesStatement;
+import net.sf.jsqlparser.expression.ExpressionVisitor;
+import net.sf.jsqlparser.statement.select.Values;
 
-public class ValuesStatementDeParser extends AbstractDeParser<ValuesStatement> {
+public class ValuesStatementDeParser extends AbstractDeParser<Values> {
 
-    private final ItemsListVisitor expressionVisitor;
+    private final ExpressionVisitor<StringBuilder> expressionVisitor;
+    private final SelectDeParser selectDeParser;
 
-    public ValuesStatementDeParser(ItemsListVisitor expressionVisitor, StringBuilder buffer) {
+    public ValuesStatementDeParser(ExpressionVisitor<StringBuilder> expressionVisitor,
+            StringBuilder buffer) {
+        this(expressionVisitor, null, buffer);
+    }
+
+    public ValuesStatementDeParser(ExpressionVisitor<StringBuilder> expressionVisitor,
+            SelectDeParser selectDeParser, StringBuilder buffer) {
         super(buffer);
         this.expressionVisitor = expressionVisitor;
+        this.selectDeParser = selectDeParser;
     }
 
     @Override
-    public void deParse(ValuesStatement values) {
-        buffer.append("VALUES ");
-        values.getExpressions().accept(expressionVisitor);
+    public void deParse(Values values) {
+        deParse(values, null);
+    }
+
+    public <S> void deParse(Values values, S context) {
+        new DmlDeParserSupport(expressionVisitor, selectDeParser, builder)
+                .deparseWithItems(values.getWithItemsList(), context);
+        builder.append("VALUES ");
+        values.getExpressions().accept(expressionVisitor, context);
+        if (values.getAlias() != null) {
+            builder.append(" ").append(values.getAlias());
+        }
     }
 }

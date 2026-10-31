@@ -9,31 +9,35 @@
  */
 package net.sf.jsqlparser.util;
 
-import java.io.StringReader;
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.BinaryExpression;
 import net.sf.jsqlparser.expression.operators.arithmetic.Addition;
 import net.sf.jsqlparser.expression.operators.arithmetic.Concat;
 import net.sf.jsqlparser.parser.CCJSqlParserManager;
 import net.sf.jsqlparser.statement.select.Select;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import org.junit.jupiter.api.Test;
+
+import java.io.StringReader;
+import java.time.Duration;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 public class ConnectExpressionsVisitorTest {
 
-    private CCJSqlParserManager parserManager = new CCJSqlParserManager();
+    private final CCJSqlParserManager parserManager = new CCJSqlParserManager();
 
     @Test
     public void testVisit_PlainSelect_concat() throws JSQLParserException {
         String sql = "select a,b,c from test";
         Select select = (Select) parserManager.parse(new StringReader(sql));
-        ConnectExpressionsVisitor instance = new ConnectExpressionsVisitor() {
+        ConnectExpressionsVisitor<Void> instance = new ConnectExpressionsVisitor<>() {
             @Override
             protected BinaryExpression createBinaryExpression() {
                 return new Concat();
             }
         };
-        select.getSelectBody().accept(instance);
+        select.accept(instance, null);
 
         assertEquals("SELECT a || b || c AS expr FROM test", select.toString());
     }
@@ -42,14 +46,38 @@ public class ConnectExpressionsVisitorTest {
     public void testVisit_PlainSelect_addition() throws JSQLParserException {
         String sql = "select a,b,c from test";
         Select select = (Select) parserManager.parse(new StringReader(sql));
-        ConnectExpressionsVisitor instance = new ConnectExpressionsVisitor("testexpr") {
+        ConnectExpressionsVisitor<Void> instance = new ConnectExpressionsVisitor<>("testexpr") {
             @Override
             protected BinaryExpression createBinaryExpression() {
                 return new Addition();
             }
         };
-        select.getSelectBody().accept(instance);
+        select.accept(instance, null);
 
         assertEquals("SELECT a + b + c AS testexpr FROM test", select.toString());
+    }
+
+    @Test
+    public void testVisit_PlainSelect_manyItemsIsLinear() throws JSQLParserException {
+        int itemCount = 200000;
+        StringBuilder sql = new StringBuilder("select ");
+        for (int i = 0; i < itemCount; i++) {
+            if (i > 0) {
+                sql.append(',');
+            }
+            sql.append('c').append(i);
+        }
+        sql.append(" from test");
+        Select select = (Select) parserManager.parse(new StringReader(sql.toString()));
+        ConnectExpressionsVisitor<Void> instance = new ConnectExpressionsVisitor<>() {
+            @Override
+            protected BinaryExpression createBinaryExpression() {
+                return new Concat();
+            }
+        };
+        // itemsExpr is a LinkedList; connecting the items used to index it by position (get(i)),
+        // which is O(n^2) in the number of select items.
+        assertTimeoutPreemptively(Duration.ofSeconds(5), () -> select.accept(instance, null));
+        assertEquals(1, select.getPlainSelect().getSelectItems().size());
     }
 }

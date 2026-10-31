@@ -12,6 +12,9 @@ package net.sf.jsqlparser.util.validation.validator;
 import net.sf.jsqlparser.parser.feature.Feature;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import net.sf.jsqlparser.statement.create.table.Index;
+import net.sf.jsqlparser.statement.create.table.ConstraintDeclaration;
+import net.sf.jsqlparser.statement.create.table.NamedConstraint;
+import net.sf.jsqlparser.util.TableDefinitionTraversal;
 import net.sf.jsqlparser.util.validation.ValidationCapability;
 import net.sf.jsqlparser.util.validation.metadata.NamedObject;
 
@@ -26,19 +29,35 @@ public class CreateTableValidator extends AbstractValidator<CreateTable> {
         for (ValidationCapability c : getCapabilities()) {
             validateFeature(c, Feature.createTable);
             validateFeature(c, createTable.isUnlogged(), Feature.createTableUnlogged);
-            validateOptionalFeature(c, createTable.getCreateOptionsStrings(), Feature.createTableCreateOptionStrings);
-            validateOptionalFeature(c, createTable.getTableOptionsStrings(), Feature.createTableTableOptionStrings);
+            validateOptionalFeature(c, createTable.getCreateOptionsStrings(),
+                    Feature.createTableCreateOptionStrings);
+            validateOptionalFeature(c, createTable.getTableOptionsStrings(),
+                    Feature.createTableTableOptionStrings);
             validateFeature(c, createTable.isIfNotExists(), Feature.createTableIfNotExists);
-            validateOptionalFeature(c, createTable.getRowMovement(), Feature.createTableRowMovement);
+            validateOptionalFeature(c, createTable.getRowMovement(),
+                    Feature.createTableRowMovement);
             validateOptionalFeature(c, createTable.getSelect(), Feature.createTableFromSelect);
-            if (isNotEmpty(createTable.getIndexes()) ) {
+            if (isNotEmpty(createTable.getIndexes())) {
                 for (Index i : createTable.getIndexes()) {
                     validateName(c, NamedObject.index, i.getName());
                 }
             }
-            validateName(c, NamedObject.table, createTable.getTable().getFullyQualifiedName(), false);
+            for (ConstraintDeclaration declaration : createTable.getConstraints()) {
+                NamedConstraint constraint = declaration.getConstraint();
+                String name = constraint != null ? constraint.getName()
+                        : declaration.getColumnOption().getForeignKeyReference() != null
+                                ? declaration.getColumnOption().getForeignKeyReference()
+                                        .getConstraintName()
+                                : null;
+                validateOptionalName(c, NamedObject.constraint, name, null, false,
+                        NamedObject.table);
+            }
+            validateName(c, NamedObject.table, createTable.getTable().getFullyQualifiedName(),
+                    false);
         }
 
+        TableDefinitionTraversal.visit(createTable, this::validateOptionalExpression,
+                this::validateOptionalFromItem);
         if (createTable.getSelect() != null) {
             getValidator(StatementValidator.class).validate(createTable.getSelect());
         }

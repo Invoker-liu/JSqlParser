@@ -1,0 +1,219 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+# Least privilege by default; each job widens only what it needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  JAVA_VERSION: '17'
+  JAVA_DISTRIBUTION: 'temurin'
+
+jobs:
+  grammar_conflicts:
+    name: Grammar Choice Conflicts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/master' }}
+
+      # Re-runs JavaCC on the JJTree output and fails on any "Warning: Choice conflict ...".
+      # `check` already depends on this task, but a dedicated job gives a fast, separately
+      # named status check that can be made required in branch protection.
+      - name: Check for grammar ambiguities
+        run: ./gradlew checkGrammarAmbiguity --no-daemon
+
+      - name: Upload grammar warning report
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: javacc-warnings
+          path: build/reports/grammar/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  gradle_check:
+    name: Gradle Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0        # required by the git-changelog / version derivation
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/master' }}
+
+      - name: Run Gradle Check
+        run: ./gradlew check --no-daemon
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: |
+            build/reports/
+            build/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  maven_verify:
+    name: Maven Verify (${{ matrix.os }})
+    needs: gradle_check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: 'maven'
+
+      - name: Run Maven Verify
+        run: mvn --batch-mode --no-transfer-progress verify
+
+  gradle_publish:
+    name: Gradle Publish (Maven Central)
+    needs: [ gradle_check, maven_verify ]
+    if: github.ref == 'refs/heads/master' && github.repository == 'JSQLParser/JSqlParser'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Publish with Gradle
+        # Gradle only picks up a secret as a project property when it is exported with the
+        # ORG_GRADLE_PROJECT_ prefix. Plain `ossrhUsername: ...` was an ordinary environment
+        # variable that nothing ever read.
+        #
+        # No RELEASE variable here on purpose: getVersion() then produces a -SNAPSHOT version and
+        # the plugin routes it to the Central Portal snapshot repository. Set RELEASE=true only
+        # when you actually intend to cut a release.
+        run: ./gradlew publishToMavenCentral --no-daemon
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.mavenCentralUsername }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.mavenCentralPassword }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.signingInMemoryKey }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.signingInMemoryKeyId }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.signingInMemoryKeyPassword }}
+
+  deploy_docs:
+    name: Build & Deploy Sphinx Docs
+    needs: [ gradle_check, maven_verify ]
+    if: github.ref == 'refs/heads/master' && github.repository == 'JSQLParser/JSqlParser'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0        # gitChangelogTask needs full history
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # cache: 'pip' needs a dependency file to key on. setup-python only looks for
+      # **/requirements.txt or **/pyproject.toml by default, neither of which exists in this
+      # repo — hence "No file ... matched". cache-dependency-path points it at the file we keep.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: '.github/requirements-docs.txt'
+
+      # Only xsltproc comes from apt. `sphinx-common` used to be installed here as well; it
+      # pulled in python3-sphinx / python3-docutils / python3-pil from the runner's stale apt
+      # index (hence the 404 on python3-pil 10.2.0-1ubuntu1.2) and shadowed the pip-installed
+      # Sphinx that actually knows about manticore_sphinx_theme. `apt-get update` first, because
+      # the pre-baked index on the runner image is regularly older than the mirror.
+      - name: Install XSLT processor
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xsltproc
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r .github/requirements-docs.txt
+
+      - name: Build Sphinx documentation with Gradle
+        env:
+          FLOATING_TOC: 'false'
+        run: ./gradlew -DFLOATING_TOC=false --no-daemon gitChangelogTask renderRR xslt xmldoc sphinx
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: 'build/sphinx'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

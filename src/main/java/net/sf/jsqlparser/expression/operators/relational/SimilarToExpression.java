@@ -13,7 +13,7 @@ import net.sf.jsqlparser.expression.BinaryExpression;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 
-public class SimilarToExpression extends BinaryExpression {
+public class SimilarToExpression extends BinaryExpression implements SupportsOldOracleJoinSyntax {
 
     private boolean not = false;
     private String escape = null;
@@ -27,8 +27,8 @@ public class SimilarToExpression extends BinaryExpression {
     }
 
     @Override
-    public void accept(ExpressionVisitor expressionVisitor) {
-        expressionVisitor.visit(this);
+    public <T, S> T accept(ExpressionVisitor<T> expressionVisitor, S context) {
+        return expressionVisitor.visit(this, context);
     }
 
     @Override
@@ -38,7 +38,9 @@ public class SimilarToExpression extends BinaryExpression {
 
     @Override
     public String toString() {
-        String retval = getLeftExpression() + " " + (not ? "NOT " : "") + getStringExpression() + " " + getRightExpression();
+        String retval = (oraclePriorPosition == ORACLE_PRIOR_START ? "PRIOR " : "")
+                + getLeftExpression() + " " + (not ? "NOT " : "") + getStringExpression()
+                + " " + getRightExpression();
         if (escape != null) {
             retval += " ESCAPE " + "'" + escape + "'";
         }
@@ -73,4 +75,39 @@ public class SimilarToExpression extends BinaryExpression {
     public SimilarToExpression withRightExpression(Expression arg0) {
         return (SimilarToExpression) super.withRightExpression(arg0);
     }
+
+    private int oraclePriorPosition = NO_ORACLE_PRIOR;
+
+    @Override
+    public int getOldOracleJoinSyntax() {
+        return NO_ORACLE_JOIN;
+    }
+
+    @Override
+    public void setOldOracleJoinSyntax(int oldOracleJoinSyntax) {
+        throw new IllegalArgumentException(
+                "oracle join operator (+) is not supported on this condition");
+    }
+
+    @Override
+    public SimilarToExpression withOldOracleJoinSyntax(int oldOracleJoinSyntax) {
+        setOldOracleJoinSyntax(oldOracleJoinSyntax);
+        return this;
+    }
+
+    @Override
+    public int getOraclePriorPosition() {
+        return oraclePriorPosition;
+    }
+
+    @Override
+    public void setOraclePriorPosition(int oraclePriorPosition) {
+        this.oraclePriorPosition = oraclePriorPosition;
+    }
+
+    public SimilarToExpression withOraclePriorPosition(int oraclePriorPosition) {
+        setOraclePriorPosition(oraclePriorPosition);
+        return this;
+    }
+
 }

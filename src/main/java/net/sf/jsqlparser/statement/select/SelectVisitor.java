@@ -9,15 +9,81 @@
  */
 package net.sf.jsqlparser.statement.select;
 
-import net.sf.jsqlparser.statement.values.ValuesStatement;
+import java.util.List;
+import net.sf.jsqlparser.statement.OutputClause;
+import net.sf.jsqlparser.statement.piped.FromQuery;
 
-public interface SelectVisitor {
+public interface SelectVisitor<T> {
+    default <S> T visitWithItems(List<WithItem<?>> withItemsList, S context) {
+        if (withItemsList != null) {
+            for (WithItem<?> withItem : withItemsList) {
+                withItem.accept(this, context);
+            }
+        }
+        return null;
+    }
 
-    void visit(PlainSelect plainSelect);
+    default <S> T visitOutputClause(OutputClause outputClause, S context) {
+        return null;
+    }
 
-    void visit(SetOperationList setOpList);
+    <S> T visit(ParenthesedSelect parenthesedSelect, S context);
 
-    void visit(WithItem withItem);
+    default void visit(ParenthesedSelect parenthesedSelect) {
+        this.visit(parenthesedSelect, null);
+    }
 
-    void visit(ValuesStatement aThis);
+    <S> T visit(PlainSelect plainSelect, S context);
+
+    default void visit(PlainSelect plainSelect) {
+        this.visit(plainSelect, null);
+    }
+
+    default <S> T visit(PivotQuery pivotQuery, S context) {
+        return null;
+    }
+
+    default void visit(PivotQuery pivotQuery) {
+        this.visit(pivotQuery, null);
+    }
+
+    default <S> T visit(UnPivotQuery unPivotQuery, S context) {
+        return null;
+    }
+
+    default void visit(UnPivotQuery unPivotQuery) {
+        this.visit(unPivotQuery, null);
+    }
+
+    <S> T visit(FromQuery fromQuery, S context);
+
+    <S> T visit(SetOperationList setOpList, S context);
+
+    default void visit(SetOperationList setOpList) {
+        this.visit(setOpList, null);
+    }
+
+    <S> T visit(WithItem<?> withItem, S context);
+
+    default void visit(WithItem<?> withItem) {
+        this.visit(withItem, null);
+    }
+
+    <S> T visit(Values values, S context);
+
+    default void visit(Values values) {
+        this.visit(values, null);
+    }
+
+    <S> T visit(LateralSubSelect lateralSubSelect, S context);
+
+    default void visit(LateralSubSelect lateralSubSelect) {
+        this.visit(lateralSubSelect, null);
+    }
+
+    <S> T visit(TableStatement tableStatement, S context);
+
+    default void visit(TableStatement tableStatement) {
+        this.visit(tableStatement, null);
+    }
 }

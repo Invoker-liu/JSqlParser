@@ -11,30 +11,9 @@ package net.sf.jsqlparser.statement.select;
 
 import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 
+import static net.sf.jsqlparser.statement.select.KSQLWindow.TimeUnit;
+
 public class KSQLJoinWindow extends ASTNodeAccessImpl {
-
-    public enum TimeUnit {
-        DAY ("DAY"),
-        HOUR ("HOUR"),
-        MINUTE ("MINUTE"),
-        SECOND ("SECOND"),
-        MILLISECOND ("MILLISECOND"),
-        DAYS ("DAYS"),
-        HOURS ("HOURS"),
-        MINUTES ("MINUTES"),
-        SECONDS ("SECONDS"),
-        MILLISECONDS ("MILLISECONDS");
-
-        private String timeUnit;
-
-        TimeUnit(String timeUnit) {
-            this.timeUnit = timeUnit;
-        }
-
-        public String getTimeUnit() {
-            return timeUnit;
-        }
-    }
 
     private boolean beforeAfter;
     private long duration;
@@ -43,8 +22,37 @@ public class KSQLJoinWindow extends ASTNodeAccessImpl {
     private TimeUnit beforeTimeUnit;
     private long afterDuration;
     private TimeUnit afterTimeUnit;
+    private boolean usingBrackets = true;
+    private KSQLWindow.Duration gracePeriod;
 
-    public KSQLJoinWindow() {
+    public boolean isUsingBrackets() {
+        return usingBrackets || beforeAfter;
+    }
+
+    public void setUsingBrackets(boolean usingBrackets) {
+        this.usingBrackets = usingBrackets;
+    }
+
+    public KSQLJoinWindow withUsingBrackets(boolean usingBrackets) {
+        setUsingBrackets(usingBrackets);
+        return this;
+    }
+
+    public KSQLWindow.Duration getGracePeriod() {
+        return gracePeriod;
+    }
+
+    public void setGracePeriod(KSQLWindow.Duration gracePeriod) {
+        this.gracePeriod = gracePeriod;
+    }
+
+    public KSQLJoinWindow withGracePeriod(KSQLWindow.Duration gracePeriod) {
+        setGracePeriod(gracePeriod);
+        return this;
+    }
+
+    public final static TimeUnit from(String timeUnitStr) {
+        return TimeUnit.from(timeUnitStr);
     }
 
     public boolean isBeforeAfterWindow() {
@@ -105,10 +113,23 @@ public class KSQLJoinWindow extends ASTNodeAccessImpl {
 
     @Override
     public String toString() {
-        if (isBeforeAfterWindow()) {
-            return "(" + beforeDuration + " " + beforeTimeUnit + ", " + afterDuration + " " + afterTimeUnit + ")";
+        StringBuilder builder = new StringBuilder();
+        if (isUsingBrackets()) {
+            builder.append('(');
         }
-        return "(" + duration + " " + timeUnit + ")";
+        if (isBeforeAfterWindow()) {
+            builder.append(beforeDuration).append(' ').append(beforeTimeUnit)
+                    .append(", ").append(afterDuration).append(' ').append(afterTimeUnit);
+        } else {
+            builder.append(duration).append(' ').append(timeUnit);
+        }
+        if (isUsingBrackets()) {
+            builder.append(')');
+        }
+        if (gracePeriod != null) {
+            builder.append(" GRACE PERIOD ").append(gracePeriod);
+        }
+        return builder.toString();
     }
 
     public KSQLJoinWindow withDuration(long duration) {

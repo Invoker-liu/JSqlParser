@@ -9,52 +9,28 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
-import static java.util.stream.Collectors.joining;
-
+import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.statement.create.index.CreateIndex;
-import net.sf.jsqlparser.statement.create.table.Index;
 
 public class CreateIndexDeParser extends AbstractDeParser<CreateIndex> {
+    private final ExpressionVisitor<StringBuilder> expressionVisitor;
 
     public CreateIndexDeParser(StringBuilder buffer) {
+        this(buffer, null);
+    }
+
+    public CreateIndexDeParser(StringBuilder buffer,
+            ExpressionVisitor<StringBuilder> expressionVisitor) {
         super(buffer);
+        this.expressionVisitor = expressionVisitor;
     }
 
     @Override
     public void deParse(CreateIndex createIndex) {
-        Index index = createIndex.getIndex();
-
-        buffer.append("CREATE ");
-
-        if (index.getType() != null) {
-            buffer.append(index.getType());
-            buffer.append(" ");
-        }
-
-        buffer.append("INDEX ");
-        buffer.append(index.getName());
-        buffer.append(" ON ");
-        buffer.append(createIndex.getTable().getFullyQualifiedName());
-
-        String using = index.getUsing();
-        if (using != null) {
-            buffer.append(" USING ");
-            buffer.append(using);
-        }
-
-        if (index.getColumnsNames() != null) {
-            buffer.append(" (");
-            buffer.append(index.getColumnWithParams().stream()
-                    .map(cp -> cp.columnName + (cp.getParams() != null ? " " + String.join(" ", cp.getParams()) : ""))
-                    .collect(joining(", ")));
-            buffer.append(")");
-        }
-
-        if (createIndex.getTailParameters() != null) {
-            for (String param : createIndex.getTailParameters()) {
-                buffer.append(" ").append(param);
-            }
+        if (expressionVisitor == null) {
+            createIndex.appendTo(builder);
+        } else {
+            createIndex.appendTo(builder, expression -> expression.accept(expressionVisitor, null));
         }
     }
-
 }

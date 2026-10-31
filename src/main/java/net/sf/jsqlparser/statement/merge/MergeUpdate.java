@@ -9,35 +9,41 @@
  */
 package net.sf.jsqlparser.statement.merge;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
 import net.sf.jsqlparser.expression.Expression;
-import net.sf.jsqlparser.schema.Column;
+import net.sf.jsqlparser.statement.update.UpdateSet;
 
-public class MergeUpdate {
+import java.io.Serializable;
+import java.util.List;
 
-    private List<Column> columns = null;
-    private List<Expression> values = null;
+public class MergeUpdate implements Serializable, MergeOperation {
+
+    private List<UpdateSet> updateSets;
+    private Expression andPredicate;
     private Expression whereCondition;
     private Expression deleteWhereCondition;
+    private MergeSide side;
 
-    public List<Column> getColumns() {
-        return columns;
+    public MergeUpdate() {}
+
+    public MergeUpdate(List<UpdateSet> updateSets) {
+        this.updateSets = updateSets;
     }
 
-    public void setColumns(List<Column> columns) {
-        this.columns = columns;
+    public List<UpdateSet> getUpdateSets() {
+        return updateSets;
     }
 
-    public List<Expression> getValues() {
-        return values;
+    public MergeUpdate setUpdateSets(List<UpdateSet> updateSets) {
+        this.updateSets = updateSets;
+        return this;
     }
 
-    public void setValues(List<Expression> values) {
-        this.values = values;
+    public Expression getAndPredicate() {
+        return andPredicate;
+    }
+
+    public void setAndPredicate(Expression andPredicate) {
+        this.andPredicate = andPredicate;
     }
 
     public Expression getWhereCondition() {
@@ -56,16 +62,30 @@ public class MergeUpdate {
         this.deleteWhereCondition = deleteWhereCondition;
     }
 
+    public MergeSide getSide() {
+        return side;
+    }
+
+    public MergeUpdate setSide(MergeSide side) {
+        this.side = side;
+        return this;
+    }
+
+    @Override
+    public <S, T> T accept(MergeOperationVisitor<T> mergeOperationVisitor, S context) {
+        return mergeOperationVisitor.visit(this, context);
+    }
+
     @Override
     public String toString() {
         StringBuilder b = new StringBuilder();
-        b.append(" WHEN MATCHED THEN UPDATE SET ");
-        for (int i = 0; i < columns.size(); i++) {
-            if (i != 0) {
-                b.append(", ");
-            }
-            b.append(columns.get(i).toString()).append(" = ").append(values.get(i).toString());
+        b.append(side == MergeSide.SOURCE ? " WHEN NOT MATCHED BY SOURCE" : " WHEN MATCHED");
+        if (andPredicate != null) {
+            b.append(" AND ").append(andPredicate.toString());
         }
+        b.append(" THEN UPDATE SET ");
+        UpdateSet.appendUpdateSetsTo(b, updateSets);
+
         if (whereCondition != null) {
             b.append(" WHERE ").append(whereCondition.toString());
         }
@@ -75,13 +95,8 @@ public class MergeUpdate {
         return b.toString();
     }
 
-    public MergeUpdate withColumns(List<Column> columns) {
-        this.setColumns(columns);
-        return this;
-    }
-
-    public MergeUpdate withValues(List<Expression> values) {
-        this.setValues(values);
+    public MergeUpdate withAndPredicate(Expression andPredicate) {
+        this.setAndPredicate(andPredicate);
         return this;
     }
 
@@ -95,28 +110,13 @@ public class MergeUpdate {
         return this;
     }
 
-    public MergeUpdate addColumns(Column... columns) {
-        List<Column> collection = Optional.ofNullable(getColumns()).orElseGet(ArrayList::new);
-        Collections.addAll(collection, columns);
-        return this.withColumns(collection);
+    public MergeUpdate withSide(MergeSide side) {
+        this.setSide(side);
+        return this;
     }
 
-    public MergeUpdate addColumns(Collection<? extends Column> columns) {
-        List<Column> collection = Optional.ofNullable(getColumns()).orElseGet(ArrayList::new);
-        collection.addAll(columns);
-        return this.withColumns(collection);
-    }
-
-    public MergeUpdate addValues(Expression... values) {
-        List<Expression> collection = Optional.ofNullable(getValues()).orElseGet(ArrayList::new);
-        Collections.addAll(collection, values);
-        return this.withValues(collection);
-    }
-
-    public MergeUpdate addValues(Collection<? extends Expression> values) {
-        List<Expression> collection = Optional.ofNullable(getValues()).orElseGet(ArrayList::new);
-        collection.addAll(values);
-        return this.withValues(collection);
+    public <E extends Expression> E getAndPredicate(Class<E> type) {
+        return type.cast(getAndPredicate());
     }
 
     public <E extends Expression> E getWhereCondition(Class<E> type) {

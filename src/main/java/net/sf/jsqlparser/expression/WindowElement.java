@@ -9,17 +9,15 @@
  */
 package net.sf.jsqlparser.expression;
 
-public class WindowElement {
+import java.io.Serializable;
+import java.util.Locale;
 
-    public enum Type {
-
-        ROWS,
-        RANGE
-    }
+public class WindowElement implements Serializable {
 
     private Type type;
     private WindowOffset offset;
     private WindowRange range;
+    private Exclusion exclusion;
 
     public Type getType() {
         return type;
@@ -45,6 +43,14 @@ public class WindowElement {
         this.range = range;
     }
 
+    public Exclusion getExclusion() {
+        return exclusion;
+    }
+
+    public void setExclusion(Exclusion exclusion) {
+        this.exclusion = exclusion;
+    }
+
     @Override
     public String toString() {
         StringBuilder buffer = new StringBuilder(type.toString());
@@ -53,6 +59,10 @@ public class WindowElement {
             buffer.append(offset.toString());
         } else if (range != null) {
             buffer.append(range.toString());
+        }
+
+        if (exclusion != null) {
+            buffer.append(" EXCLUDE ").append(exclusion);
         }
 
         return buffer.toString();
@@ -71,6 +81,34 @@ public class WindowElement {
     public WindowElement withRange(WindowRange range) {
         this.setRange(range);
         return this;
+    }
+
+    public WindowElement withExclusion(Exclusion exclusion) {
+        this.setExclusion(exclusion);
+        return this;
+    }
+
+    public enum Type {
+        ROWS, RANGE, GROUPS;
+
+        public static Type from(String type) {
+            return Enum.valueOf(Type.class, type.toUpperCase(Locale.ROOT));
+        }
+    }
+
+    public enum Exclusion {
+        CURRENT_ROW("CURRENT ROW"), GROUP("GROUP"), TIES("TIES"), NO_OTHERS("NO OTHERS");
+
+        private final String keyword;
+
+        Exclusion(String keyword) {
+            this.keyword = keyword;
+        }
+
+        @Override
+        public String toString() {
+            return keyword;
+        }
     }
 
 }

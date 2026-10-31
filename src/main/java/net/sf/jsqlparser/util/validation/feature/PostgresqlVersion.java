@@ -24,18 +24,17 @@ import net.sf.jsqlparser.parser.feature.Feature;
  */
 public enum PostgresqlVersion implements Version {
     V10("10",
-            EnumSet.of(
-                    // supported if used with jdbc
+            EnumSet.of(// supported if used with jdbc
                     Feature.jdbcParameter,
-                    Feature.jdbcNamedParameter,
-                    // expressions
+                    Feature.jdbcNamedParameter, // expressions
+                    Feature.doStatement,
                     Feature.exprLike,
-                    Feature.exprSimilarTo,
-                    // https://www.postgresql.org/docs/current/sql-select.html
+                    Feature.exprSimilarTo, // https://www.postgresql.org/docs/current/sql-select.html
                     Feature.select,
-                    Feature.selectGroupBy, Feature.function, Feature.tableFunction, Feature.lateralSubSelect,
-                    Feature.selectHaving,
-                    // https://www.postgresql.org/docs/current/queries-table-expressions.html#QUERIES-GROUPING-SETS
+                    Feature.tableStatement,
+                    Feature.selectGroupBy, Feature.function, Feature.tableFunction,
+                    Feature.lateralSubSelect,
+                    Feature.selectHaving, // https://www.postgresql.org/docs/current/queries-table-expressions.html#QUERIES-GROUPING-SETS
                     Feature.selectGroupByGroupingSets,
 
                     // https://www.postgresql.org/docs/current/sql-select.html#join_type
@@ -73,9 +72,13 @@ public enum PostgresqlVersion implements Version {
                     Feature.orderBy,
                     Feature.orderByNullOrdering,
 
+                    Feature.selectForNoKeyUpdate,
+                    Feature.selectForKeyShare,
+                    Feature.selectForShare,
                     Feature.selectForUpdate,
                     Feature.selectForUpdateOfTable,
                     Feature.selectForUpdateNoWait,
+                    Feature.selectForUpdateSkipLocked,
 
                     // https://www.postgresql.org/docs/current/queries-union.html
                     Feature.setOperation,
@@ -88,69 +91,116 @@ public enum PostgresqlVersion implements Version {
                     Feature.commentOnTable,
                     Feature.commentOnColumn,
                     Feature.commentOnView,
+                    Feature.commentOnIndex, Feature.commentOnSchema, Feature.commentOnSequence,
+                    Feature.commentOnDomain, Feature.commentOnType,
+                    Feature.commentOnMaterializedView,
+                    Feature.commentOnFunction, Feature.commentOnConstraint,
+                    Feature.commentOnTrigger, Feature.commentOnPolicy, Feature.commentOnRule,
+                    Feature.commentOnProcedure, Feature.commentOnRoutine,
+                    Feature.commentOnAggregate, Feature.commentOnCast,
+                    Feature.commentOnCollation, Feature.commentOnForeignTable,
+                    Feature.commentOnStatistics, Feature.commentOnDatabase, Feature.commentOnRole,
+                    Feature.commentOnTablespace, Feature.commentOnAccessMethod,
+                    Feature.commentOnExtension, Feature.commentOnForeignDataWrapper,
+                    Feature.commentOnLanguage, Feature.commentOnServer,
+                    Feature.commentOnEventTrigger, Feature.commentOnPublication,
+                    Feature.commentOnSubscription,
+                    Feature.commentOnOperator, Feature.commentOnOperatorClass,
+                    Feature.commentOnOperatorFamily, Feature.commentOnConversion,
+                    Feature.commentOnLargeObject, Feature.commentOnTransform,
+                    Feature.commentOnTextSearchConfiguration,
+                    Feature.commentOnTextSearchDictionary, Feature.commentOnTextSearchParser,
+                    Feature.commentOnTextSearchTemplate,
 
                     // https://www.postgresql.org/docs/current/sql-createsequence.html
                     Feature.createSequence,
-                    // https://www.postgresql.org/docs/current/sql-altersequence.html
-                    Feature.alterSequence,
-                    // https://www.postgresql.org/docs/current/sql-createschema.html
-                    Feature.createSchema,
-                    // https://www.postgresql.org/docs/current/sql-createindex.html
-                    Feature.createIndex,
-                    // https://www.postgresql.org/docs/current/sql-createtable.html
-                    Feature.createTable, Feature.createTableUnlogged, 
+                    Feature.createAccessMethod,
+                    Feature.createTablespace, Feature.alterTablespace,
+                    Feature.createForeignDataWrapper, Feature.alterForeignDataWrapper,
+                    Feature.createServer, Feature.alterServer, Feature.createUserMapping,
+                    Feature.alterUserMapping,
+                    Feature.createTextSearchConfiguration, Feature.alterTextSearchConfiguration,
+                    Feature.createRule, Feature.notifyStatement,
+                    Feature.createCollation, Feature.alterCollation,
+                    Feature.createPublication, Feature.alterPublication,
+                    Feature.createSubscription, Feature.alterSubscription,
+                    Feature.createType, Feature.alterType,
+                    Feature.createDomain, Feature.alterDomain,
+                    Feature.createExtension, Feature.alterExtension, // https://www.postgresql.org/docs/current/sql-altersequence.html
+                    Feature.alterSequence, // https://www.postgresql.org/docs/current/sql-createschema.html
+                    Feature.createSchema, Feature.alterSchema, // https://www.postgresql.org/docs/current/sql-createindex.html
+                    Feature.createIndex, // https://www.postgresql.org/docs/current/sql-createtable.html
+                    Feature.createTable, Feature.createTableUnlogged,
                     Feature.createTableCreateOptionStrings, Feature.createTableTableOptionStrings,
-                    Feature.createTableFromSelect, Feature.createTableIfNotExists,
-                    // https://www.postgresql.org/docs/current/sql-createview.html
+                    Feature.createTableFromSelect, Feature.createTableIfNotExists, // https://www.postgresql.org/docs/current/sql-createview.html
                     Feature.createView, Feature.createViewTemporary, Feature.createOrReplaceView,
-                    // https://www.postgresql.org/docs/current/sql-alterview.html
+                    Feature.createViewMaterialized, // https://www.postgresql.org/docs/current/sql-alterview.html
                     // Feature.alterView,
+
+                    // https://www.postgresql.org/docs/current/sql-createdatabase.html
+                    // https://www.postgresql.org/docs/current/sql-alterdatabase.html
+                    Feature.createDatabase, Feature.alterDatabase,
+
+                    // https://www.postgresql.org/docs/current/sql-alterfunction.html
+                    // https://www.postgresql.org/docs/current/sql-alterprocedure.html
+                    // https://www.postgresql.org/docs/current/sql-alterroutine.html
+                    // https://www.postgresql.org/docs/current/sql-altertrigger.html
+                    Feature.alterFunction, Feature.alterProcedure, Feature.alterRoutine,
+                    Feature.alterTrigger,
+
+                    // https://www.postgresql.org/docs/16/sql-refreshmaterializedview.html
+                    Feature.refreshMaterializedView,
+                    Feature.refreshMaterializedWithNoDataView,
+                    Feature.refreshMaterializedWithDataView,
 
                     // https://www.postgresql.org/docs/current/sql-insert.html
                     Feature.insert,
                     Feature.insertValues,
                     Feature.values,
                     Feature.insertFromSelect,
-                    Feature.insertReturningAll, Feature.insertReturningExpressionList,
-                    // https://www.postgresql.org/docs/current/sql-update.html
+                    Feature.insertReturningAll,
+                    Feature.insertReturningExpressionList, // https://www.postgresql.org/docs/current/sql-update.html
                     Feature.update,
-                    Feature.updateReturning,
-                    // https://www.postgresql.org/docs/current/sql-delete.html
+                    Feature.updateReturning, // https://www.postgresql.org/docs/current/sql-delete.html
                     Feature.delete,
-                    // https://www.postgresql.org/docs/current/sql-truncate.html
+                    Feature.deleteReturningExpressionList, // https://www.postgresql.org/docs/current/sql-truncate.html
                     Feature.truncate,
 
                     // https://www.postgresql.org/docs/current/sql-call.html
                     Feature.execute, Feature.executeCall,
 
-                    Feature.drop,
-                    // https://www.postgresql.org/docs/current/sql-droptable.html
-                    Feature.dropTable,
-                    // https://www.postgresql.org/docs/current/sql-dropindex.html
-                    Feature.dropIndex,
-                    // https://www.postgresql.org/docs/current/sql-dropview.html
-                    Feature.dropView,
-                    // https://www.postgresql.org/docs/current/sql-dropschema.html
-                    Feature.dropSchema,
-                    // https://www.postgresql.org/docs/current/sql-dropsequence.html
+                    Feature.drop, // https://www.postgresql.org/docs/current/sql-droptable.html
+                    Feature.dropTable, // https://www.postgresql.org/docs/current/sql-dropindex.html
+                    Feature.dropIndex, // https://www.postgresql.org/docs/current/sql-dropview.html
+                    Feature.dropView, // https://www.postgresql.org/docs/current/sql-dropschema.html
+                    Feature.dropSchema, // https://www.postgresql.org/docs/current/sql-dropsequence.html
                     Feature.dropSequence,
                     Feature.dropTableIfExists, Feature.dropIndexIfExists, Feature.dropViewIfExists,
-                    Feature.dropSchemaIfExists, Feature.dropSequenceIfExists,
+                    Feature.dropSchemaIfExists, Feature.dropSequenceIfExists, // https://www.postgresql.org/docs/current/sql-reassign-owned.html
+                    Feature.reassignOwned,
 
                     // https://www.postgresql.org/docs/current/sql-altertable.html
-                    Feature.alterTable,
-                    // https://www.postgresql.org/docs/current/using-explain.html
-                    Feature.explain,
-                    // https://www.postgresql.org/docs/current/sql-grant.html
+                    Feature.alterTable, // https://www.postgresql.org/docs/current/using-explain.html
+                    Feature.explain, // https://www.postgresql.org/docs/current/sql-grant.html
                     Feature.grant,
-                    // https://www.postgresql.org/docs/current/sql-set.html
-                    Feature.set,
-                    // https://www.postgresql.org/docs/current/sql-reset.html
-                    Feature.reset,
-                    // https://www.postgresql.org/docs/current/sql-commit.html
-                    Feature.commit
-                    )),
-    V11("11", V10.copy().getFeatures()), V12("12", V11.copy().getFeatures());
+                    Feature.revoke, Feature.createRole, Feature.alterRole,
+                    Feature.alterDefaultPrivileges, Feature.createTrigger, // https://www.postgresql.org/docs/current/sql-createeventtrigger.html
+                    Feature.createEventTrigger, Feature.alterEventTrigger, // https://www.postgresql.org/docs/current/sql-reindex.html
+                    Feature.reindex, // https://www.postgresql.org/docs/current/sql-security-label.html
+                    Feature.securityLabel, // https://www.postgresql.org/docs/current/sql-set.html
+                    Feature.set, Feature.setAssignmentTo, // https://www.postgresql.org/docs/current/sql-reset.html
+                    Feature.reset, // https://www.postgresql.org/docs/current/sql-commit.html
+                    Feature.commit, Feature.startTransaction, Feature.releaseSavepoint,
+                    Feature.transactionIsolationLevel, Feature.transactionDeferrable)), V11("11",
+                            V10.copy().getFeatures()), V12("12",
+                                    V11.copy()
+                                            .add(Feature.createAccessMethodTable,
+                                                    Feature.reindexConcurrently,
+                                                    Feature.transactionChain)
+                                            .getFeatures()), V13(
+                                                    "13",
+                                                    V12.copy().getFeatures()), V14("14",
+                                                            V13.copy().getFeatures());
 
     private Set<Feature> features;
     private String versionString;
@@ -170,7 +220,8 @@ public enum PostgresqlVersion implements Version {
      * @param unsupported
      * @see #copy() to copy from previous version
      */
-    PostgresqlVersion(String versionString, Set<Feature> featuresSupported, Set<Feature> unsupported) {
+    PostgresqlVersion(String versionString, Set<Feature> featuresSupported,
+            Set<Feature> unsupported) {
         this.versionString = versionString;
         this.features = featuresSupported;
         this.features.removeAll(unsupported);

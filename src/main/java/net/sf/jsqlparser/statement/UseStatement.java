@@ -9,7 +9,9 @@
  */
 package net.sf.jsqlparser.statement;
 
-public class UseStatement implements Statement {
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
+
+public class UseStatement extends ASTNodeAccessImpl implements Statement {
 
     private String name;
     private boolean schemaKeyword;
@@ -49,8 +51,8 @@ public class UseStatement implements Statement {
     }
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     public UseStatement withName(String name) {

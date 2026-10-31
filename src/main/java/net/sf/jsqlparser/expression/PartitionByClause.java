@@ -12,37 +12,53 @@ package net.sf.jsqlparser.expression;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 
-public class PartitionByClause {
-    ExpressionList partitionExpressionList;
+import java.io.Serializable;
+
+public class PartitionByClause extends ExpressionList<Expression> implements Serializable {
     boolean brackets = false;
 
-    public ExpressionList getPartitionExpressionList() {
-        return partitionExpressionList;
+    @Deprecated
+    public ExpressionList<Expression> getPartitionExpressionList() {
+        return this;
     }
-    
-    public void setPartitionExpressionList(ExpressionList partitionExpressionList) {
+
+    @Deprecated
+    public void setPartitionExpressionList(ExpressionList<Expression> partitionExpressionList) {
         setPartitionExpressionList(partitionExpressionList, false);
     }
 
-    public void setPartitionExpressionList(ExpressionList partitionExpressionList, boolean brackets) {
-        this.partitionExpressionList = partitionExpressionList;
-        this.brackets = brackets;
+    @Deprecated
+    public void setPartitionExpressionList(ExpressionList<Expression> partitionExpressionList,
+            boolean brackets) {
+        setExpressions(partitionExpressionList, brackets);
     }
 
-    void toStringPartitionBy(StringBuilder b) {
-        if (partitionExpressionList != null && !partitionExpressionList.getExpressions().isEmpty()) {
+    public PartitionByClause setExpressions(ExpressionList<Expression> partitionExpressionList,
+            boolean brackets) {
+        clear();
+        if (partitionExpressionList != null) {
+            addAll(partitionExpressionList);
+        }
+        this.brackets = brackets;
+        return this;
+    }
+
+    public void toStringPartitionBy(StringBuilder b) {
+        if (!isEmpty()) {
             b.append("PARTITION BY ");
-            b.append(PlainSelect.
-                    getStringList(partitionExpressionList.getExpressions(), true, brackets));
+            b.append(PlainSelect.getStringList(this, true,
+                    brackets));
             b.append(" ");
         }
     }
-    
+
     public boolean isBrackets() {
         return brackets;
     }
 
-    public PartitionByClause withPartitionExpressionList(ExpressionList partitionExpressionList) {
+    @Deprecated
+    public PartitionByClause withPartitionExpressionList(
+            ExpressionList<Expression> partitionExpressionList) {
         this.setPartitionExpressionList(partitionExpressionList);
         return this;
     }

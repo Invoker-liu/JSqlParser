@@ -24,20 +24,15 @@ import net.sf.jsqlparser.parser.feature.Feature;
  */
 public enum OracleVersion implements Version {
     V19C("19c",
-            EnumSet.of(
-                    // supported if used with jdbc
+            EnumSet.of(// supported if used with jdbc
                     Feature.jdbcParameter,
-                    Feature.jdbcNamedParameter,
-                    // expressions
-                    Feature.exprLike,
-                    // common features
+                    Feature.jdbcNamedParameter, // expressions
+                    Feature.exprLike, // common features
                     // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/SELECT.html
-                    Feature.select,
-                    // https://www.oracletutorial.com/oracle-basics/oracle-group-by/
-                    Feature.selectGroupBy, Feature.function,
-                    // https://www.oracletutorial.com/oracle-basics/oracle-grouping-sets/
-                    Feature.selectGroupByGroupingSets,
-                    // https://www.oracletutorial.com/oracle-basics/oracle-having/
+                    Feature.matchRecognize,
+                    Feature.select, // https://www.oracletutorial.com/oracle-basics/oracle-group-by/
+                    Feature.selectGroupBy, Feature.function, // https://www.oracletutorial.com/oracle-basics/oracle-grouping-sets/
+                    Feature.selectGroupByGroupingSets, // https://www.oracletutorial.com/oracle-basics/oracle-having/
                     Feature.selectHaving,
 
                     // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/SELECT.html
@@ -55,7 +50,8 @@ public enum OracleVersion implements Version {
 
                     // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/SELECT.html
                     // see "row_limiting_clause"
-                    Feature.offset, Feature.offsetParam, Feature.fetch, Feature.fetchFirst, Feature.fetchNext,
+                    Feature.offset, Feature.offsetParam, Feature.fetch, Feature.fetchFirst,
+                    Feature.fetchNext,
 
                     // https://www.oracletutorial.com/oracle-basics/oracle-select-distinct/
                     Feature.distinct, Feature.selectUnique,
@@ -83,13 +79,14 @@ public enum OracleVersion implements Version {
                     // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/SELECT.html
                     // see "for_update_clause"
                     Feature.selectForUpdate,
-                    Feature.selectForUpdateWait, Feature.selectForUpdateNoWait,
+                    Feature.selectForUpdateWait,
+                    Feature.selectForUpdateNoWait,
+                    Feature.selectForUpdateSkipLocked,
 
                     // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/INSERT.html
                     Feature.insert,
                     Feature.insertValues,
-                    Feature.values,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/INSERT.html
+                    Feature.values, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/INSERT.html
                     // see "single_table_insert"
                     Feature.insertFromSelect,
 
@@ -100,47 +97,37 @@ public enum OracleVersion implements Version {
 
                     // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/DELETE.html
                     Feature.delete,
+                    Feature.deleteReturningExpressionList,
 
                     // https://www.oracletutorial.com/oracle-basics/oracle-truncate-table/
                     Feature.truncate,
 
-                    Feature.drop,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/DROP-TABLE.html
-                    Feature.dropTable,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/DROP-INDEX.html
-                    Feature.dropIndex,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/DROP-VIEW.html
-                    Feature.dropView,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/DROP-SEQUENCE.html
+                    Feature.drop, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/DROP-TABLE.html
+                    Feature.dropTable, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/DROP-INDEX.html
+                    Feature.dropIndex, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/DROP-VIEW.html
+                    Feature.dropView, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/DROP-SEQUENCE.html
                     Feature.dropSequence,
 
                     // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/ALTER-TABLE.html
-                    Feature.alterTable,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/ALTER-SEQUENCE.html
-                    Feature.alterSequence,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnpls/EXECUTE-IMMEDIATE-statement.html
-                    Feature.executeStatementImmediate,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-VIEW.html
+                    Feature.alterTable, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/ALTER-SEQUENCE.html
+                    Feature.alterSequence, // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnpls/EXECUTE-IMMEDIATE-statement.html
+                    Feature.executeStatementImmediate, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-VIEW.html
                     Feature.createView,
-                    Feature.createViewForce, Feature.createOrReplaceView,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-MATERIALIZED-VIEW.htm
-                    Feature.createViewMaterialized,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-TABLE.html
-                    Feature.createTable, Feature.createTableCreateOptionStrings, Feature.createTableTableOptionStrings,
-                    Feature.createTableFromSelect, Feature.createTableRowMovement,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-INDEX.html
-                    Feature.createIndex,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-SEQUENCE.html
-                    Feature.createSequence,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-TRIGGER.html
-                    Feature.createTrigger,
-                    // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-SCHEMA.html
+                    Feature.createViewForce, Feature.createOrReplaceView, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-MATERIALIZED-VIEW.htm
+                    Feature.createViewMaterialized, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-TABLE.html
+                    Feature.createTable, Feature.createTableCreateOptionStrings,
+                    Feature.createTableTableOptionStrings,
+                    Feature.createTableFromSelect, Feature.createTableRowMovement, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-INDEX.html
+                    Feature.createIndex, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-SEQUENCE.html
+                    Feature.createSequence, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-TRIGGER.html
+                    Feature.createTrigger, // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-SCHEMA.html
                     Feature.createSchema,
 
                     Feature.commit,
 
                     // https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/COMMENT.html
-                    Feature.comment, Feature.commentOnTable, Feature.commentOnColumn, Feature.commentOnView,
+                    Feature.comment, Feature.commentOnTable, Feature.commentOnColumn,
+                    Feature.commentOnView,
 
                     // https://docs.oracle.com/en/database/oracle/oracle-database/19/rcmrf/DESCRIBE.html
                     Feature.describe,
@@ -151,7 +138,8 @@ public enum OracleVersion implements Version {
                     // https://www.oracletutorial.com/oracle-basics/oracle-merge/
                     Feature.merge,
 
-                    Feature.createFunction, Feature.createProcedure, Feature.functionalStatement, Feature.block,
+                    Feature.createFunction, Feature.createProcedure, Feature.functionalStatement,
+                    Feature.block, Feature.oracleBlock, Feature.execute,
                     Feature.declare,
 
                     // special oracle features

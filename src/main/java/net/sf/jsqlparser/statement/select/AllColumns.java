@@ -9,24 +9,56 @@
  */
 package net.sf.jsqlparser.statement.select;
 
+import java.util.ArrayList;
+import java.util.List;
+import net.sf.jsqlparser.expression.ColumnsTransformer;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 
-public class AllColumns extends ASTNodeAccessImpl implements SelectItem, Expression {
+public class AllColumns extends ASTNodeAccessImpl implements Expression {
+    private List<ColumnsTransformer> transformers;
 
-    @Override
-    public void accept(SelectItemVisitor selectItemVisitor) {
-        selectItemVisitor.visit(this);
+    public AllColumns() {
+        this(null);
+    }
+
+    public AllColumns(List<ColumnsTransformer> transformers) {
+        this.transformers = transformers;
+    }
+
+    public List<ColumnsTransformer> getTransformers() {
+        if (transformers == null) {
+            transformers = new ArrayList<>();
+        }
+        return transformers;
+    }
+
+    public AllColumns setTransformers(List<ColumnsTransformer> transformers) {
+        this.transformers = transformers;
+        return this;
+    }
+
+    public AllColumns addTransformer(ColumnsTransformer transformer) {
+        getTransformers().add(transformer);
+        return this;
+    }
+
+    public StringBuilder appendTo(StringBuilder builder) {
+        builder.append("*");
+        for (ColumnsTransformer transformer : getTransformers()) {
+            builder.append(" ").append(transformer);
+        }
+        return builder;
     }
 
     @Override
     public String toString() {
-        return "*";
+        return appendTo(new StringBuilder()).toString();
     }
 
     @Override
-    public void accept(ExpressionVisitor expressionVisitor) {
-        expressionVisitor.visit(this);
+    public <T, S> T accept(ExpressionVisitor<T> expressionVisitor, S context) {
+        return expressionVisitor.visit(this, context);
     }
 }

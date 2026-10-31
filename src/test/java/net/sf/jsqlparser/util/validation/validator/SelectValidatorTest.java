@@ -17,13 +17,47 @@ import net.sf.jsqlparser.util.validation.feature.DatabaseType;
 import net.sf.jsqlparser.util.validation.feature.FeaturesAllowed;
 import net.sf.jsqlparser.util.validation.feature.MariaDbVersion;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class SelectValidatorTest extends ValidationTestAsserts {
+
+    /**
+     * {@link FeaturesAllowed#SELECT} does not allow {@link Feature#jdbcParameter}, so a {@code ?}
+     * argument must be reported wherever the function is written.
+     */
+    private static final FeaturesAllowed SELECT_WITH_TABLE_FUNCTIONS =
+            new FeaturesAllowed("SELECT + tableFunction", Feature.tableFunction)
+                    .add(FeaturesAllowed.SELECT);
 
     @Test
     public void testValidationSelectNotAllowed() throws JSQLParserException {
         String sql = "SELECT 1";
         validateNotAllowed(sql, 1, 1, FeaturesAllowed.DDL, Feature.select);
+    }
+
+    @Test
+    public void testValidationMySqlSelectModifiers() {
+        String sql =
+                "SELECT HIGH_PRIORITY SQL_SMALL_RESULT SQL_BIG_RESULT SQL_BUFFER_RESULT a FROM t";
+        validateNoErrors(sql, 1, DatabaseType.MYSQL, DatabaseType.MARIADB);
+        validateNotSupported(sql, 1, 1, DatabaseType.POSTGRESQL, Feature.mysqlSelectModifiers);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SELECT a INTO OUTFILE '/tmp/a.txt' FROM t",
+            "SELECT a FROM t INTO OUTFILE '/tmp/a.txt'",
+            "SELECT a FROM t INTO DUMPFILE '/tmp/a.bin'",
+            "SELECT a FROM t WHERE a IN (SELECT b FROM u INTO OUTFILE '/tmp/b.txt')",
+            "SELECT * FROM t INTO TEMP x"})
+    public void testValidationSelectIntoNotAllowed(String sql) {
+        validateNotAllowed(sql, 1, 1, FeaturesAllowed.SELECT, Feature.selectInto);
+    }
+
+    @Test
+    public void testValidationMySqlSelectIntoOutfile() {
+        String sql = "SELECT a FROM t INTO OUTFILE '/tmp/a.txt'";
+        validateNoErrors(sql, 1, DatabaseType.MYSQL, DatabaseType.MARIADB);
     }
 
     @Test
@@ -69,6 +103,25 @@ public class SelectValidatorTest extends ValidationTestAsserts {
     }
 
     @Test
+    public void testValidationForShare() throws JSQLParserException {
+        String sql = "SELECT * FROM mytable FOR SHARE";
+        validateNoErrors(sql, 1, DatabaseType.MYSQL, DatabaseType.POSTGRESQL);
+    }
+
+    @Test
+    public void testValidationForPostgresShare() throws JSQLParserException {
+        String sql = "SELECT * FROM mytable FOR KEY SHARE";
+        validateNoErrors(sql, 1, DatabaseType.POSTGRESQL);
+
+        String sql2 = "SELECT * FROM mytable FOR NO KEY UPDATE";
+        validateNoErrors(sql2, 1, DatabaseType.POSTGRESQL);
+
+        // Not familiar with oracle, please modify if supported.
+        validateNotSupported(sql2, 1, 1, DatabaseType.ORACLE,
+                Feature.selectForNoKeyUpdate);
+    }
+
+    @Test
     public void testValidationForUpdateNoWait() throws JSQLParserException {
         String sql = "SELECT * FROM mytable FOR UPDATE NOWAIT";
         validateNoErrors(sql, 1, DatabaseType.ORACLE, DatabaseType.MARIADB,
@@ -83,7 +136,8 @@ public class SelectValidatorTest extends ValidationTestAsserts {
 
     @Test
     public void testValidationJoin() throws JSQLParserException {
-        for (String sql : Arrays.asList("SELECT t1.col, t2.col, t1.id FROM tab1 t1, tab2 t2 WHERE t1.id = t2.id",
+        for (String sql : Arrays.asList(
+                "SELECT t1.col, t2.col, t1.id FROM tab1 t1, tab2 t2 WHERE t1.id = t2.id",
                 "SELECT t1.col, t2.col, t1.id FROM tab1 t1 JOIN tab2 t2 ON t1.id = t2.id",
                 "SELECT t1.col, t2.col, t1.id FROM tab1 t1 INNER JOIN tab2 t2 ON t1.id = t2.id")) {
             validateNoErrors(sql, 1, DatabaseType.DATABASES);
@@ -92,7 +146,8 @@ public class SelectValidatorTest extends ValidationTestAsserts {
 
     @Test
     public void testOracleHierarchicalQuery() throws JSQLParserException {
-        String sql = "SELECT last_name, employee_id, manager_id, LEVEL FROM employees START WITH employee_id = 100 CONNECT BY PRIOR employee_id = manager_id ORDER SIBLINGS BY last_name";
+        String sql =
+                "SELECT last_name, employee_id, manager_id, LEVEL FROM employees START WITH employee_id = 100 CONNECT BY PRIOR employee_id = manager_id ORDER SIBLINGS BY last_name";
         validateNoErrors(sql, 1, DatabaseType.ORACLE);
     }
 
@@ -127,7 +182,8 @@ public class SelectValidatorTest extends ValidationTestAsserts {
 
     @Test
     public void testValidationWithRecursive() throws JSQLParserException {
-        String statement = "WITH RECURSIVE t (n) AS ((SELECT 1) UNION ALL (SELECT n + 1 FROM t WHERE n < 100)) SELECT sum(n) FROM t";
+        String statement =
+                "WITH RECURSIVE t (n) AS ((SELECT 1) UNION ALL (SELECT n + 1 FROM t WHERE n < 100)) SELECT sum(n) FROM t";
         validateNoErrors(statement, 1, DatabaseType.H2, DatabaseType.MARIADB, DatabaseType.MYSQL,
                 DatabaseType.SQLSERVER, DatabaseType.POSTGRESQL);
         validateNotSupported(statement, 1, 1, DatabaseType.ORACLE, Feature.withItemRecursive);
@@ -135,7 +191,8 @@ public class SelectValidatorTest extends ValidationTestAsserts {
 
     @Test
     public void testSelectMulipleExpressionList() {
-        String sql = "SELECT * FROM mytable WHERE (SSN, SSM) IN (('11111111111111', '22222222222222'))";
+        String sql =
+                "SELECT * FROM mytable WHERE (SSN, SSM) IN (('11111111111111', '22222222222222'))";
         validateNoErrors(sql, 1, DatabaseType.DATABASES);
     }
 
@@ -148,7 +205,8 @@ public class SelectValidatorTest extends ValidationTestAsserts {
 
     @Test
     public void testValidatePivotXml() throws JSQLParserException {
-        validateNoErrors("SELECT * FROM mytable PIVOT XML (count(a) FOR b IN ('val1'))", 1, DatabaseType.SQLSERVER);
+        validateNoErrors("SELECT * FROM mytable PIVOT XML (count(a) FOR b IN ('val1'))", 1,
+                DatabaseType.SQLSERVER);
     }
 
     @Test
@@ -160,15 +218,55 @@ public class SelectValidatorTest extends ValidationTestAsserts {
 
     @Test
     public void testValidateSubJoin() throws JSQLParserException {
-        validateNoErrors("SELECT * FROM ((tabc c INNER JOIN tabn n ON n.ref = c.id) INNER JOIN taba a ON a.REF = c.id)",
+        validateNoErrors(
+                "SELECT * FROM ((tabc c INNER JOIN tabn n ON n.ref = c.id) INNER JOIN taba a ON a.REF = c.id)",
                 1, DatabaseType.SQLSERVER);
     }
 
     @Test
     public void testValidateTableFunction() {
-        for (String sql : Arrays.asList("SELECT f2 FROM SOME_FUNCTION()", "SELECT f2 FROM SOME_FUNCTION(1, 'val')")) {
-            validateNoErrors(sql, 1, DatabaseType.POSTGRESQL, DatabaseType.H2, DatabaseType.SQLSERVER);
+        for (String sql : Arrays.asList("SELECT f2 FROM SOME_FUNCTION()",
+                "SELECT f2 FROM SOME_FUNCTION(1, 'val')")) {
+            validateNoErrors(sql, 1, DatabaseType.POSTGRESQL, DatabaseType.H2,
+                    DatabaseType.SQLSERVER);
         }
+    }
+
+    @Test
+    public void testValidateFunctionArgumentInWhere() {
+        validateNotAllowed("SELECT * FROM t WHERE a = f(?)", 1, 1, SELECT_WITH_TABLE_FUNCTIONS,
+                Feature.jdbcParameter);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SELECT * FROM f(?)",
+            "SELECT * FROM ROWS FROM (f(1), g(?))",
+            "SELECT * FROM ROWS FROM (f(1), g(?)) WITH ORDINALITY"})
+    public void testValidateTableFunctionArguments(String sql) {
+        validateNotAllowed(sql, 1, 1, SELECT_WITH_TABLE_FUNCTIONS, Feature.jdbcParameter);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SELECT upper(a) FROM t",
+            "SELECT DISTINCT ON (upper(a)) a FROM t",
+            "SELECT TOP (upper(a)) a FROM t",
+            "SELECT a FROM t QUALIFY upper(a) = 'X'",
+            "SELECT a FROM t WINDOW w AS (PARTITION BY upper(a))",
+            "SELECT a FROM t WINDOW w AS (ORDER BY upper(a))",
+            "SELECT a FROM t LIMIT upper(a)",
+            "SELECT a FROM t LIMIT 1 OFFSET upper(a)",
+            "SELECT a FROM t OFFSET upper(a) ROWS",
+            "SELECT a FROM t FETCH FIRST upper(a) ROWS ONLY",
+            "SELECT a FROM t UNION SELECT b FROM u LIMIT upper(a)"})
+    public void testValidateFunctionOutsideWhere(String sql) {
+        validateNotAllowed(sql, 1, 1,
+                new FeaturesAllowed(Feature.values()).remove(Feature.function), Feature.function);
+    }
+
+    @Test
+    public void testValidateSubSelectInSelectList() {
+        validateNotAllowed("SELECT (SELECT a FROM t FOR UPDATE)", 1, 1, FeaturesAllowed.SELECT,
+                Feature.selectForUpdate);
     }
 
     @Test
@@ -182,11 +280,11 @@ public class SelectValidatorTest extends ValidationTestAsserts {
     public void testValidateIssue1502() throws JSQLParserException {
         validateNoErrors(
                 "select b.id, name ,(select name from Blog where name = 'sadf') as name2 "
-                + ", category, owner, b.update_time "
-                + "from Blog as b "
-                + "left join Content "
-                + "ON b.id = Content.blog_id "
-                + "where name = 'sadf' order by Content.title desc",
+                        + ", category, owner, b.update_time "
+                        + "from Blog as b "
+                        + "left join Content "
+                        + "ON b.id = Content.blog_id "
+                        + "where name = 'sadf' order by Content.title desc",
                 1, DatabaseType.POSTGRESQL);
-    }    
+    }
 }

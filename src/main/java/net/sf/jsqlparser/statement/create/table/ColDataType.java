@@ -9,23 +9,106 @@
  */
 package net.sf.jsqlparser.statement.create.table;
 
+import net.sf.jsqlparser.expression.IntervalQualifier;
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
+import net.sf.jsqlparser.statement.select.PlainSelect;
+
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
-import static java.util.stream.Collectors.joining;
-import net.sf.jsqlparser.statement.select.PlainSelect;
 
-public class ColDataType {
+import static java.util.stream.Collectors.joining;
+
+public class ColDataType extends ASTNodeAccessImpl {
+
+    public enum Signedness {
+        SIGNED, UNSIGNED
+    }
+
+    public enum TypeModifier {
+        SIGNED, UNSIGNED, ZEROFILL
+    }
+
+    public enum NationalCharacterType {
+        CHAR, VARCHAR
+    }
+
+    /** Spelling of a character set clause; MySQL shorthands also select a character set. */
+    public enum CharacterSetSyntax {
+        CHARACTER_SET, CHARSET, ASCII, UNICODE
+    }
 
     private String dataType;
     private List<String> argumentsStringList;
     private String characterSet;
+    private CharacterSetSyntax characterSetSyntax = CharacterSetSyntax.CHARACTER_SET;
+    private IntervalQualifier intervalQualifier;
     private List<Integer> arrayData = new ArrayList<Integer>();
+    private boolean usingArrayKeyword;
+
+    /** ARRAY or ARRAY[n] spelling; arrayData still contains the single dimension. */
+    public boolean isUsingArrayKeyword() {
+        return usingArrayKeyword;
+    }
+
+    public void setUsingArrayKeyword(boolean usingArrayKeyword) {
+        this.usingArrayKeyword = usingArrayKeyword;
+    }
+
+    private Signedness signedness;
+    private boolean zerofill;
+    private BigInteger precision;
+    private boolean maxPrecision;
+    private Integer scale;
+    private List<TypeModifier> typeModifiers;
+    private NationalCharacterType nationalCharacterType;
+    private XmlTypeModifier xmlTypeModifier;
 
     public ColDataType() {
         // empty constructor
+    }
+
+    public ColDataType(String dataType, int precision, int scale) {
+        this(dataType);
+        setNumericTypeParameters(precision < 0 ? null
+                : precision == Integer.MAX_VALUE ? "MAX" : Integer.toString(precision),
+                scale < 0 ? null : Integer.valueOf(scale));
+    }
+
+    /**
+     * Creates a parameterized type, using {@code null} for an omitted parameter. Unlike the legacy
+     * primitive constructor, this accepts negative scales, including {@code -1}. The legacy
+     * {@link Integer#MAX_VALUE} precision sentinel continues to represent MAX.
+     */
+    public static ColDataType fromNumericParameters(String dataType, Integer precision,
+            Integer scale) {
+        return fromTypeParameters(dataType, precision == null ? null
+                : precision == Integer.MAX_VALUE ? "MAX" : precision.toString(), scale);
+    }
+
+    /**
+     * Creates a type from its numeric parameter spelling. Unlike the legacy primitive constructor,
+     * a numeric 2147483647 is distinct from MAX and larger lengths are retained without narrowing.
+     */
+    public static ColDataType fromTypeParameters(String dataType, String precision, Integer scale) {
+        ColDataType type = new ColDataType(dataType);
+        type.setNumericTypeParameters(precision, scale);
+        return type;
+    }
+
+    private void setNumericTypeParameters(String parameter, Integer scale) {
+        if (parameter != null) {
+            maxPrecision = "MAX".equalsIgnoreCase(parameter);
+            // Oracle's NUMBER(*, s) has no precision of its own.
+            precision = maxPrecision || "*".equals(parameter) ? null : new BigInteger(parameter);
+            this.scale = scale;
+            dataType += " (" + (maxPrecision ? "MAX" : precision != null ? precision : parameter)
+                    + (scale != null ? ", " + scale : "") + ")";
+        }
     }
 
     public ColDataType(String dataType) {
@@ -36,28 +119,123 @@ public class ColDataType {
         return argumentsStringList;
     }
 
+    public void setArgumentsStringList(List<String> list) {
+        argumentsStringList = list;
+    }
+
     public String getDataType() {
         return dataType;
     }
 
-    public void setArgumentsStringList(List<String> list) {
-        argumentsStringList = list;
+    /**
+     * Returns the type name without parenthesized parameters, retaining qualification, quoting and
+     * multiword names such as TIMESTAMP WITH TIME ZONE. The legacy {@link #getDataType()} spelling
+     * is unchanged. Quoted parentheses are part of an identifier and are retained.
+     */
+    public String getBaseTypeName() {
+        if (dataType == null) {
+            return null;
+        }
+        StringBuilder name = new StringBuilder();
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i < dataType.length(); i++) {
+            char c = dataType.charAt(i);
+            if (quote != 0) {
+                if (depth == 0) {
+                    name.append(c);
+                }
+                if (c == quote) {
+                    if (i + 1 < dataType.length() && dataType.charAt(i + 1) == quote) {
+                        if (depth == 0) {
+                            name.append(quote);
+                        }
+                        i++;
+                    } else {
+                        quote = 0;
+                    }
+                }
+            } else if (c == '\'' || c == '"' || c == '`' || c == '[') {
+                quote = c == '[' ? ']' : c;
+                if (depth == 0) {
+                    name.append(c);
+                }
+            } else if (c == '(') {
+                depth++;
+                while (name.length() > 0
+                        && Character.isWhitespace(name.charAt(name.length() - 1))) {
+                    name.setLength(name.length() - 1);
+                }
+            } else if (c == ')' && depth > 0) {
+                depth--;
+            } else if (depth == 0) {
+                name.append(c);
+            }
+        }
+        return name.toString().trim();
     }
 
     public void setDataType(String string) {
         dataType = string;
     }
-    
+
     public void setDataType(List<String> list) {
         dataType = list.stream().collect(joining("."));
     }
 
+    /** Returns the character set name, resolving ASCII to latin1 and UNICODE to ucs2. */
     public String getCharacterSet() {
         return characterSet;
     }
 
     public void setCharacterSet(String characterSet) {
         this.characterSet = characterSet;
+        if (characterSetSyntax == CharacterSetSyntax.ASCII
+                || characterSetSyntax == CharacterSetSyntax.UNICODE) {
+            characterSetSyntax = CharacterSetSyntax.CHARACTER_SET;
+        }
+    }
+
+    public CharacterSetSyntax getCharacterSetSyntax() {
+        return characterSetSyntax;
+    }
+
+    /**
+     * Selects the clause spelling. ASCII selects latin1 and UNICODE selects ucs2; the explicit
+     * spellings retain the current character set. Calling {@link #setCharacterSet(String)} after a
+     * shorthand switches to CHARACTER SET.
+     */
+    public void setCharacterSetSyntax(CharacterSetSyntax characterSetSyntax) {
+        this.characterSetSyntax = Objects.requireNonNull(characterSetSyntax, "characterSetSyntax");
+        if (characterSetSyntax == CharacterSetSyntax.ASCII) {
+            characterSet = "latin1";
+        } else if (characterSetSyntax == CharacterSetSyntax.UNICODE) {
+            characterSet = "ucs2";
+        }
+    }
+
+    public ColDataType withCharacterSetSyntax(CharacterSetSyntax characterSetSyntax) {
+        setCharacterSetSyntax(characterSetSyntax);
+        return this;
+    }
+
+    /** Whether the character set clause uses MySQL's CHARSET abbreviation. */
+    public boolean isUseCharsetKeyword() {
+        return characterSetSyntax == CharacterSetSyntax.CHARSET;
+    }
+
+    public void setUseCharsetKeyword(boolean useCharsetKeyword) {
+        setCharacterSetSyntax(useCharsetKeyword
+                ? CharacterSetSyntax.CHARSET
+                : CharacterSetSyntax.CHARACTER_SET);
+    }
+
+    public IntervalQualifier getIntervalQualifier() {
+        return intervalQualifier;
+    }
+
+    public void setIntervalQualifier(IntervalQualifier intervalQualifier) {
+        this.intervalQualifier = intervalQualifier;
     }
 
     public List<Integer> getArrayData() {
@@ -68,10 +246,145 @@ public class ColDataType {
         this.arrayData = arrayData;
     }
 
+    public Signedness getSignedness() {
+        return signedness;
+    }
+
+    public void setSignedness(Signedness signedness) {
+        this.signedness = signedness;
+    }
+
+    public boolean isZerofill() {
+        return zerofill;
+    }
+
+    public void setZerofill(boolean zerofill) {
+        this.zerofill = zerofill;
+    }
+
+    /** Returns MySQL numeric modifiers in their original order, including repetitions. */
+    public List<TypeModifier> getTypeModifiers() {
+        return typeModifiers;
+    }
+
+    public void setTypeModifiers(List<TypeModifier> typeModifiers) {
+        this.typeModifiers = typeModifiers;
+        signedness = null;
+        zerofill = false;
+        if (typeModifiers != null) {
+            for (TypeModifier modifier : typeModifiers) {
+                updateEffectiveModifier(modifier);
+            }
+        }
+    }
+
+    public void addTypeModifier(TypeModifier typeModifier) {
+        if (typeModifiers == null) {
+            typeModifiers = new ArrayList<>();
+        }
+        typeModifiers.add(typeModifier);
+        updateEffectiveModifier(typeModifier);
+    }
+
+    private void updateEffectiveModifier(TypeModifier modifier) {
+        switch (modifier) {
+            case SIGNED:
+                signedness = Signedness.SIGNED;
+                break;
+            case UNSIGNED:
+                signedness = Signedness.UNSIGNED;
+                break;
+            case ZEROFILL:
+                zerofill = true;
+                break;
+            default:
+                break;
+        }
+    }
+
+    public NationalCharacterType getNationalCharacterType() {
+        return nationalCharacterType;
+    }
+
+    public void setNationalCharacterType(NationalCharacterType nationalCharacterType) {
+        this.nationalCharacterType = nationalCharacterType;
+    }
+
+    public boolean isNational() {
+        return nationalCharacterType != null;
+    }
+
+    public XmlTypeModifier getXmlTypeModifier() {
+        return xmlTypeModifier;
+    }
+
+    public void setXmlTypeModifier(XmlTypeModifier xmlTypeModifier) {
+        this.xmlTypeModifier = xmlTypeModifier;
+    }
+
+    public ColDataType withXmlTypeModifier(XmlTypeModifier xmlTypeModifier) {
+        setXmlTypeModifier(xmlTypeModifier);
+        return this;
+    }
+
+    /**
+     * The first numeric type parameter, e.g. {@code 255} for {@code VARCHAR(255)} or {@code 10} for
+     * {@code DECIMAL(10, 2)}. {@code MAX} is reported as {@link Integer#MAX_VALUE}. Returns
+     * {@code null} when the type carries no numeric parameters, e.g. {@code INT} or
+     * {@code ENUM('a', 'b')}, when the precision is Oracle's {@code *} as in {@code NUMBER(*, 0)},
+     * or when a numeric length exceeds the integer range. Use {@link #getNumericPrecision()} for
+     * the full range and {@link #isMaxPrecision()} to distinguish MAX from the numeric value
+     * 2147483647.
+     */
+    public Integer getPrecision() {
+        return maxPrecision ? Integer.valueOf(Integer.MAX_VALUE)
+                : precision != null && precision.bitLength() < Integer.SIZE
+                        ? Integer.valueOf(precision.intValue())
+                        : null;
+    }
+
+    public void setPrecision(Integer precision) {
+        setNumericPrecision(precision == null ? null : BigInteger.valueOf(precision));
+    }
+
+    /** Returns the exact numeric parameter, or null for an omitted parameter or MAX. */
+    public BigInteger getNumericPrecision() {
+        return precision;
+    }
+
+    /** Updates numeric metadata without changing the legacy rendered type spelling. */
+    public void setNumericPrecision(BigInteger precision) {
+        this.precision = precision;
+        maxPrecision = false;
+    }
+
+    /** Distinguishes the MAX keyword from an equal numeric value in the legacy accessor. */
+    public boolean isMaxPrecision() {
+        return maxPrecision;
+    }
+
+    /**
+     * The second numeric type parameter, e.g. {@code 2} for {@code DECIMAL(10, 2)} or {@code -3}
+     * for PostgreSQL {@code NUMERIC(2, -3)}. Returns {@code null} when absent.
+     */
+    public Integer getScale() {
+        return scale;
+    }
+
+    public void setScale(Integer scale) {
+        this.scale = scale;
+    }
+
     @Override
     public String toString() {
         StringBuilder arraySpec = new StringBuilder();
+        if (usingArrayKeyword && !arrayData.isEmpty()) {
+            arraySpec.append(" ARRAY");
+        }
         for (Integer item : arrayData) {
+            if (usingArrayKeyword && item == null) {
+                continue;
+            }
             arraySpec.append("[");
             if (item != null) {
                 arraySpec.append(item);
@@ -79,10 +392,32 @@ public class ColDataType {
             arraySpec.append("]");
         }
         return dataType
-                + (argumentsStringList != null ? " " + PlainSelect.
-                        getStringList(argumentsStringList, true, true) : "")
+                + (intervalQualifier != null ? " " + intervalQualifier.toString() : "")
+                + (xmlTypeModifier != null ? " " + xmlTypeModifier : "")
+                + (argumentsStringList != null
+                        ? " " + PlainSelect.getStringList(argumentsStringList, true, true)
+                        : "")
+                + (typeModifiers != null && !typeModifiers.isEmpty()
+                        ? " " + PlainSelect.getStringList(typeModifiers, false, false)
+                        : (signedness != null ? " " + signedness : "")
+                                + (zerofill ? " ZEROFILL" : ""))
                 + arraySpec.toString()
-                + (characterSet != null ? " CHARACTER SET " + characterSet : "");
+                + characterSetClause();
+    }
+
+    private String characterSetClause() {
+        if (characterSet == null) {
+            return "";
+        }
+        switch (characterSetSyntax) {
+            case ASCII:
+            case UNICODE:
+                return " " + characterSetSyntax;
+            case CHARSET:
+                return " CHARSET " + characterSet;
+            default:
+                return " CHARACTER SET " + characterSet;
+        }
     }
 
     public ColDataType withDataType(String dataType) {
@@ -100,19 +435,56 @@ public class ColDataType {
         return this;
     }
 
+    public ColDataType withIntervalQualifier(IntervalQualifier intervalQualifier) {
+        this.setIntervalQualifier(intervalQualifier);
+        return this;
+    }
+
     public ColDataType withArrayData(List<Integer> arrayData) {
         this.setArrayData(arrayData);
         return this;
     }
 
+    public ColDataType withSignedness(Signedness signedness) {
+        setSignedness(signedness);
+        return this;
+    }
+
+    public ColDataType withZerofill(boolean zerofill) {
+        setZerofill(zerofill);
+        return this;
+    }
+
+    public ColDataType withTypeModifiers(List<TypeModifier> typeModifiers) {
+        setTypeModifiers(typeModifiers);
+        return this;
+    }
+
+    public ColDataType withNationalCharacterType(NationalCharacterType nationalCharacterType) {
+        setNationalCharacterType(nationalCharacterType);
+        return this;
+    }
+
+    public ColDataType withPrecision(Integer precision) {
+        this.setPrecision(precision);
+        return this;
+    }
+
+    public ColDataType withScale(Integer scale) {
+        this.setScale(scale);
+        return this;
+    }
+
     public ColDataType addArgumentsStringList(String... argumentsStringList) {
-        List<String> collection = Optional.ofNullable(getArgumentsStringList()).orElseGet(ArrayList::new);
+        List<String> collection =
+                Optional.ofNullable(getArgumentsStringList()).orElseGet(ArrayList::new);
         Collections.addAll(collection, argumentsStringList);
         return this.withArgumentsStringList(collection);
     }
 
     public ColDataType addArgumentsStringList(Collection<String> argumentsStringList) {
-        List<String> collection = Optional.ofNullable(getArgumentsStringList()).orElseGet(ArrayList::new);
+        List<String> collection =
+                Optional.ofNullable(getArgumentsStringList()).orElseGet(ArrayList::new);
         collection.addAll(argumentsStringList);
         return this.withArgumentsStringList(collection);
     }
@@ -127,5 +499,49 @@ public class ColDataType {
         List<Integer> collection = Optional.ofNullable(getArrayData()).orElseGet(ArrayList::new);
         collection.addAll(arrayData);
         return this.withArrayData(collection);
+    }
+
+    @Override
+    public final boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof ColDataType)) {
+            return false;
+        }
+
+        ColDataType that = (ColDataType) o;
+        return dataType.equalsIgnoreCase(that.dataType)
+                && Objects.equals(argumentsStringList, that.argumentsStringList)
+                && Objects.equals(characterSet, that.characterSet)
+                && characterSetSyntax == that.characterSetSyntax
+                && Objects.equals(intervalQualifier, that.intervalQualifier)
+                && Objects.equals(arrayData, that.arrayData)
+                && usingArrayKeyword == that.usingArrayKeyword
+                && signedness == that.signedness
+                && zerofill == that.zerofill
+                && Objects.equals(typeModifiers, that.typeModifiers)
+                && Objects.equals(xmlTypeModifier, that.xmlTypeModifier)
+                && nationalCharacterType == that.nationalCharacterType;
+    }
+
+    @Override
+    public int hashCode() {
+        // Use the same per-code-point case folding as String.equalsIgnoreCase, including Unicode.
+        int result = dataType.codePoints()
+                .map(c -> Character.toLowerCase(Character.toUpperCase(c)))
+                .reduce(0, (hash, c) -> 31 * hash + c);
+        result = 31 * result + Objects.hashCode(argumentsStringList);
+        result = 31 * result + Objects.hashCode(characterSet);
+        result = 31 * result + Objects.hashCode(characterSetSyntax);
+        result = 31 * result + Objects.hashCode(intervalQualifier);
+        result = 31 * result + Objects.hashCode(arrayData);
+        result = 31 * result + Boolean.hashCode(usingArrayKeyword);
+        result = 31 * result + Objects.hashCode(signedness);
+        result = 31 * result + Boolean.hashCode(zerofill);
+        result = 31 * result + Objects.hashCode(typeModifiers);
+        result = 31 * result + Objects.hashCode(nationalCharacterType);
+        result = 31 * result + Objects.hashCode(xmlTypeModifier);
+        return result;
     }
 }

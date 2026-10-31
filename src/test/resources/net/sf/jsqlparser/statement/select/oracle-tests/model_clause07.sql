@@ -21,3 +21,5 @@ order by
   group_2
 
 --@FAILURE: Encountered unexpected token: "unique" "UNIQUE" recorded first on Aug 3, 2021, 7:20:08 AM
+--@FAILURE: Encountered: <K_UNIQUE> / "unique", at line 16, column 7, in lexical state DEFAULT. recorded first on 15 May 2025, 16:24:08
+--@FAILURE: --- recorded first on 11 Apr 2026, 22:18:19

@@ -9,56 +9,56 @@
  */
 package net.sf.jsqlparser.statement;
 
+import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
+import java.util.function.Consumer;
 
-public class Statements {
+public class Statements extends ArrayList<Statement> implements Serializable {
 
-    private List<Statement> statements;
-
+    @Deprecated
     public List<Statement> getStatements() {
-        return statements;
+        return this;
     }
 
+    @Deprecated
     public void setStatements(List<Statement> statements) {
-        this.statements = statements;
+        this.clear();
+        this.addAll(statements);
     }
 
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
+    }
+
+    public <E extends Statement> E get(Class<E> type, int index) {
+        return type.cast(get(index));
+    }
+
+    /**
+     * Appends each statement using the supplied renderer and the list's separators. Blocks and
+     * IF/ELSE statements retain their own semicolon settings. Null entries produced by error
+     * recovery retain the legacy "null;" placeholder without invoking the renderer.
+     */
+    public StringBuilder appendTo(StringBuilder builder, Consumer<Statement> statementPrinter) {
+        for (Statement stmt : this) {
+            if (stmt == null) {
+                builder.append("null");
+            } else {
+                statementPrinter.accept(stmt);
+            }
+            // IfElseStatements and Blocks control the Semicolons by themselves
+            if (!(stmt instanceof IfElseStatement || stmt instanceof Block)) {
+                builder.append(';');
+            }
+            builder.append('\n');
+        }
+        return builder;
     }
 
     @Override
     public String toString() {
-        StringBuilder b = new StringBuilder();
-        for (Statement stmt : statements) {
-            if (stmt instanceof IfElseStatement) {
-                // IfElseStatements print the Semicolons by themselves
-                b.append(stmt).append("\n");
-            } else {
-                b.append(stmt).append(";\n");
-            }
-        }
-        return b.toString();
-    }
-
-    public Statements withStatements(List<Statement> statements) {
-        this.setStatements(statements);
-        return this;
-    }
-
-    public Statements addStatements(Statement... statements) {
-        List<Statement> collection = Optional.ofNullable(getStatements()).orElseGet(ArrayList::new);
-        Collections.addAll(collection, statements);
-        return this.withStatements(collection);
-    }
-
-    public Statements addStatements(Collection<? extends Statement> statements) {
-        List<Statement> collection = Optional.ofNullable(getStatements()).orElseGet(ArrayList::new);
-        collection.addAll(statements);
-        return this.withStatements(collection);
+        StringBuilder builder = new StringBuilder();
+        return appendTo(builder, builder::append).toString();
     }
 }

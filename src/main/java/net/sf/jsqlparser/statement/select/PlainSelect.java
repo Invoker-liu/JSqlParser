@@ -9,75 +9,182 @@
  */
 package net.sf.jsqlparser.statement.select;
 
+import static java.util.stream.Collectors.joining;
+
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import net.sf.jsqlparser.expression.Alias;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.OracleHierarchicalExpression;
 import net.sf.jsqlparser.expression.OracleHint;
-import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
+import net.sf.jsqlparser.expression.PreferringClause;
+import net.sf.jsqlparser.expression.WindowDefinition;
 import net.sf.jsqlparser.schema.Table;
+import net.sf.jsqlparser.statement.update.UpdateSet;
 
 @SuppressWarnings({"PMD.CyclomaticComplexity"})
-public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
+public class PlainSelect extends Select {
 
     private Distinct distinct = null;
-    private List<SelectItem> selectItems;
+    private BigQuerySelectQualifier bigQuerySelectQualifier = null;
+    private List<SelectItem<?>> selectItems;
     private List<Table> intoTables;
+    private MySqlSelectIntoClause mySqlSelectIntoClause;
     private FromItem fromItem;
+    private List<LateralView> lateralViews;
     private List<Join> joins;
+    private Expression preWhere;
     private Expression where;
     private GroupByElement groupBy;
-    private List<OrderByElement> orderByElements;
     private Expression having;
-    private Limit limit;
-    private Offset offset;
-    private Fetch fetch;
+    private Expression qualify;
+    private boolean qualifyAfterWindow;
     private OptimizeFor optimizeFor;
     private Skip skip;
-    private boolean mySqlHintStraightJoin;
+    private final EnumSet<MySqlSelectModifier> mySqlSelectModifiers =
+            EnumSet.noneOf(MySqlSelectModifier.class);
     private First first;
     private Top top;
     private OracleHierarchicalExpression oracleHierarchical = null;
+    private PreferringClause preferringClause = null;
     private OracleHint oracleHint = null;
-    private boolean oracleSiblings = false;
-    private boolean forUpdate = false;
-    private Table forUpdateTable = null;
-    private boolean useBrackets = false;
-    private Wait wait;
-    private boolean mySqlSqlCalcFoundRows = false;
-    private MySqlSqlCacheFlags mySqlCacheFlag = null;
     private String forXmlPath;
     private KSQLWindow ksqlWindow = null;
-    private boolean noWait = false;
-    private boolean emitChanges = false;
-    private WithIsolation withIsolation;
+    private EmitMode emitMode = EmitMode.NONE;
 
-    public boolean isUseBrackets() {
-        return useBrackets;
+    private List<WindowDefinition> windowDefinitions;
+    /**
+     * @see <a href=
+     *      'https://clickhouse.com/docs/en/sql-reference/statements/select/from#final-modifier'>Clickhouse
+     *      FINAL</a>
+     */
+    private boolean isUsingFinal = false;
+    private boolean isUsingOnly = false;
+    private boolean useWithNoLog = false;
+    private boolean fromFirst = false;
+    private Table intoTempTable = null;
+    private List<UpdateSet> settings = null;
+
+    public enum EmitMode {
+        NONE, CHANGES, FINAL
     }
 
-    public void setUseBrackets(boolean useBrackets) {
-        this.useBrackets = useBrackets;
+    public PlainSelect() {}
+
+    public PlainSelect(FromItem fromItem) {
+        addSelectItem(new AllColumns());
+        setFromItem(fromItem);
+    }
+
+    public PlainSelect(FromItem fromItem, Expression whereExpressions) {
+        addSelectItem(new AllColumns());
+        setFromItem(fromItem);
+        setWhere(whereExpressions);
+    }
+
+    public PlainSelect(FromItem fromItem, Collection<Expression> orderByExpressions) {
+        addSelectItem(new AllColumns());
+        setFromItem(fromItem);
+        addOrderByExpressions(orderByExpressions);
+    }
+
+    public PlainSelect(FromItem fromItem, Expression whereExpressions,
+            Collection<Expression> orderByExpressions) {
+        addSelectItem(new AllColumns());
+        setFromItem(fromItem);
+        setWhere(whereExpressions);
+        addOrderByExpressions(orderByExpressions);
+    }
+
+    public PlainSelect(Collection<Expression> selectExpressions, FromItem fromItem) {
+        addSelectExpressions(selectExpressions);
+        setFromItem(fromItem);
+    }
+
+    public PlainSelect(Collection<Expression> selectExpressions, FromItem fromItem,
+            Expression whereExpressions) {
+        addSelectExpressions(selectExpressions);
+        setFromItem(fromItem);
+        setWhere(whereExpressions);
+    }
+
+    public PlainSelect(Collection<Expression> selectExpressions, FromItem fromItem,
+            Collection<Expression> orderByExpressions) {
+        addSelectExpressions(selectExpressions);
+        setFromItem(fromItem);
+        addOrderByExpressions(orderByExpressions);
+    }
+
+    public PlainSelect(Collection<Expression> selectExpressions, FromItem fromItem,
+            Expression whereExpressions, Collection<Expression> orderByExpressions) {
+        addSelectExpressions(selectExpressions);
+        setFromItem(fromItem);
+        setWhere(whereExpressions);
+        addOrderByExpressions(orderByExpressions);
+    }
+
+    @Deprecated
+    public boolean isUseBrackets() {
+        return false;
     }
 
     public FromItem getFromItem() {
         return fromItem;
     }
 
+    public void setFromItem(FromItem item) {
+        fromItem = item;
+    }
+
     public List<Table> getIntoTables() {
         return intoTables;
     }
 
-    public List<SelectItem> getSelectItems() {
+    public void setIntoTables(List<Table> intoTables) {
+        this.intoTables = intoTables;
+    }
+
+    public MySqlSelectIntoClause getMySqlSelectIntoClause() {
+        return mySqlSelectIntoClause;
+    }
+
+    public void setMySqlSelectIntoClause(MySqlSelectIntoClause mySqlSelectIntoClause) {
+        this.mySqlSelectIntoClause = mySqlSelectIntoClause;
+    }
+
+    public List<SelectItem<?>> getSelectItems() {
         return selectItems;
+    }
+
+    public void setSelectItems(List<SelectItem<?>> list) {
+        selectItems = list;
+    }
+
+    public SelectItem<?> getSelectItem(int index) {
+        return selectItems.get(index);
     }
 
     public Expression getWhere() {
         return where;
+    }
+
+    public void setWhere(Expression where) {
+        this.where = where;
+    }
+
+    public Expression getPreWhere() {
+        return preWhere;
+    }
+
+    public void setPreWhere(Expression preWhere) {
+        this.preWhere = preWhere;
     }
 
     public PlainSelect withFromItem(FromItem item) {
@@ -85,31 +192,73 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         return this;
     }
 
-    public void setFromItem(FromItem item) {
-        fromItem = item;
-    }
-
-    public void setIntoTables(List<Table> intoTables) {
-        this.intoTables = intoTables;
-    }
-
-    public PlainSelect withSelectItems(List<SelectItem> list) {
+    public PlainSelect withSelectItems(List<SelectItem<?>> list) {
         this.setSelectItems(list);
         return this;
     }
 
-    public void setSelectItems(List<SelectItem> list) {
-        selectItems = list;
+    public PlainSelect withSelectItems(SelectItem<?>... selectItems) {
+        return this.withSelectItems(Arrays.asList(selectItems));
     }
 
-    public PlainSelect addSelectItems(SelectItem... items) {
-        List<SelectItem> list = Optional.ofNullable(getSelectItems()).orElseGet(ArrayList::new);
-        Collections.addAll(list, items);
-        return withSelectItems(list);
+    public PlainSelect addSelectItems(SelectItem<?>... items) {
+        selectItems = Optional.ofNullable(selectItems).orElseGet(ArrayList::new);
+        selectItems.addAll(Arrays.asList(items));
+        return this;
     }
 
-    public void setWhere(Expression where) {
-        this.where = where;
+    public PlainSelect addSelectExpressions(Collection<Expression> expressions) {
+        selectItems = Optional.ofNullable(selectItems).orElseGet(ArrayList::new);
+        for (Expression expression : expressions) {
+            selectItems.add(SelectItem.from(expression));
+        }
+        return this;
+    }
+
+    public PlainSelect addSelectItems(Expression... expressions) {
+        return this.addSelectExpressions(Arrays.asList(expressions));
+    }
+
+    public PlainSelect addSelectItem(Expression expression, Alias alias) {
+        selectItems = Optional.ofNullable(selectItems).orElseGet(ArrayList::new);
+        selectItems.add(new SelectItem<>(expression, alias));
+        return this;
+    }
+
+    public PlainSelect addSelectItem(Expression expression) {
+        return addSelectItem(expression, null);
+    }
+
+    public List<LateralView> getLateralViews() {
+        return lateralViews;
+    }
+
+    public void setLateralViews(Collection<LateralView> lateralViews) {
+        if (this.lateralViews == null) {
+            this.lateralViews = new ArrayList<>();
+        } else {
+            this.lateralViews.clear();
+        }
+
+        if (lateralViews != null) {
+            this.lateralViews.addAll(lateralViews);
+        } else {
+            this.lateralViews = null;
+        }
+    }
+
+    public PlainSelect addLateralView(LateralView lateralView) {
+        if (this.lateralViews == null) {
+            this.lateralViews = new ArrayList<>();
+        }
+
+        this.lateralViews.add(lateralView);
+        return this;
+    }
+
+    public PlainSelect withLateralViews(Collection<LateralView> lateralViews) {
+        this.setLateralViews(lateralViews);
+        return this;
     }
 
     /**
@@ -119,6 +268,14 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
      */
     public List<Join> getJoins() {
         return joins;
+    }
+
+    public void setJoins(List<Join> list) {
+        joins = list;
+    }
+
+    public Join getJoin(int index) {
+        return joins.get(index);
     }
 
     public PlainSelect addJoins(Join... joins) {
@@ -132,45 +289,89 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         return this;
     }
 
-    public void setJoins(List<Join> list) {
-        joins = list;
+    public boolean isUsingFinal() {
+        return isUsingFinal;
+    }
+
+    public void setUsingFinal(boolean usingFinal) {
+        this.isUsingFinal = usingFinal;
+    }
+
+    public PlainSelect withUsingFinal(boolean usingFinal) {
+        this.setUsingFinal(usingFinal);
+        return this;
+    }
+
+    public boolean isUsingOnly() {
+        return isUsingOnly;
+    }
+
+    public void setUsingOnly(boolean usingOnly) {
+        isUsingOnly = usingOnly;
+    }
+
+    public PlainSelect withUsingOnly(boolean usingOnly) {
+        this.setUsingOnly(usingOnly);
+        return this;
+    }
+
+    public boolean isUseWithNoLog() {
+        return useWithNoLog;
+    }
+
+    public void setUseWithNoLog(boolean useWithNoLog) {
+        this.useWithNoLog = useWithNoLog;
+    }
+
+    public PlainSelect withUseWithNoLog(boolean useWithNoLog) {
+        this.setUseWithNoLog(useWithNoLog);
+        return this;
+    }
+
+    public Table getIntoTempTable() {
+        return intoTempTable;
+    }
+
+    public void setIntoTempTable(Table intoTempTable) {
+        this.intoTempTable = intoTempTable;
+    }
+
+    public PlainSelect withIntoTempTable(Table intoTempTable) {
+        this.setIntoTempTable(intoTempTable);
+        return this;
+    }
+
+    public List<UpdateSet> getSettings() {
+        return settings;
+    }
+
+    public void setSettings(List<UpdateSet> settings) {
+        this.settings = settings;
+    }
+
+    public PlainSelect withSettings(List<UpdateSet> settings) {
+        this.setSettings(settings);
+        return this;
     }
 
     @Override
-    public void accept(SelectVisitor selectVisitor) {
-        selectVisitor.visit(this);
+    public <T, S> T accept(SelectVisitor<T> selectVisitor, S context) {
+        return selectVisitor.visit(this, context);
     }
 
-    public List<OrderByElement> getOrderByElements() {
-        return orderByElements;
+    @Override
+    public <T, S> T accept(FromItemVisitor<T> fromItemVisitor, S context) {
+        return fromItemVisitor.visit(this, context);
     }
 
-    public void setOrderByElements(List<OrderByElement> orderByElements) {
-        this.orderByElements = orderByElements;
+    @Override
+    public SampleClause getSampleClause() {
+        return null;
     }
 
-    public Limit getLimit() {
-        return limit;
-    }
-
-    public void setLimit(Limit limit) {
-        this.limit = limit;
-    }
-
-    public Offset getOffset() {
-        return offset;
-    }
-
-    public void setOffset(Offset offset) {
-        this.offset = offset;
-    }
-
-    public Fetch getFetch() {
-        return fetch;
-    }
-
-    public void setFetch(Fetch fetch) {
-        this.fetch = fetch;
+    @Override
+    public FromItem setSampleClause(SampleClause sampleClause) {
+        return null;
     }
 
     public OptimizeFor getOptimizeFor() {
@@ -198,11 +399,11 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
     }
 
     public boolean getMySqlHintStraightJoin() {
-        return this.mySqlHintStraightJoin;
+        return mySqlSelectModifiers.contains(MySqlSelectModifier.STRAIGHT_JOIN);
     }
 
     public void setMySqlHintStraightJoin(boolean mySqlHintStraightJoin) {
-        this.mySqlHintStraightJoin = mySqlHintStraightJoin;
+        setMySqlSelectModifier(MySqlSelectModifier.STRAIGHT_JOIN, mySqlHintStraightJoin);
     }
 
     public First getFirst() {
@@ -221,6 +422,15 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         this.distinct = distinct;
     }
 
+    public BigQuerySelectQualifier getBigQuerySelectQualifier() {
+        return bigQuerySelectQualifier;
+    }
+
+    public PlainSelect setBigQuerySelectQualifier(BigQuerySelectQualifier bigQuerySelectQualifier) {
+        this.bigQuerySelectQualifier = bigQuerySelectQualifier;
+        return this;
+    }
+
     public Expression getHaving() {
         return having;
     }
@@ -229,9 +439,28 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         having = expression;
     }
 
+    public Expression getQualify() {
+        return qualify;
+    }
+
+    /** Whether QUALIFY follows the WINDOW clause, as in DuckDB, rather than preceding it. */
+    public boolean isQualifyAfterWindow() {
+        return qualifyAfterWindow;
+    }
+
+    public PlainSelect setQualifyAfterWindow(boolean qualifyAfterWindow) {
+        this.qualifyAfterWindow = qualifyAfterWindow;
+        return this;
+    }
+
+    public PlainSelect setQualify(Expression qualify) {
+        this.qualify = qualify;
+        return this;
+    }
+
     /**
-     * A list of {@link Expression}s of the GROUP BY clause. It is null in case
-     * there is no GROUP BY clause
+     * A list of {@link Expression}s of the GROUP BY clause. It is null in case there is no GROUP BY
+     * clause
      *
      * @return a list of {@link Expression}s
      */
@@ -244,8 +473,8 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
     }
 
     public PlainSelect addGroupByColumnReference(Expression expr) {
-        groupBy = Optional.ofNullable(groupBy).orElseGet(GroupByElement::new);
-        groupBy.addGroupByExpression(expr);
+        this.groupBy = Optional.ofNullable(groupBy).orElseGet(GroupByElement::new);
+        this.groupBy.addGroupByExpression(expr);
         return this;
     }
 
@@ -257,28 +486,12 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         this.oracleHierarchical = oracleHierarchical;
     }
 
-    public boolean isOracleSiblings() {
-        return oracleSiblings;
+    public PreferringClause getPreferringClause() {
+        return preferringClause;
     }
 
-    public void setOracleSiblings(boolean oracleSiblings) {
-        this.oracleSiblings = oracleSiblings;
-    }
-
-    public boolean isForUpdate() {
-        return forUpdate;
-    }
-
-    public void setForUpdate(boolean forUpdate) {
-        this.forUpdate = forUpdate;
-    }
-
-    public Table getForUpdateTable() {
-        return forUpdateTable;
-    }
-
-    public void setForUpdateTable(Table forUpdateTable) {
-        this.forUpdateTable = forUpdateTable;
+    public void setPreferringClause(PreferringClause preferringClause) {
+        this.preferringClause = preferringClause;
     }
 
     public OracleHint getOracleHint() {
@@ -287,24 +500,6 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
 
     public void setOracleHint(OracleHint oracleHint) {
         this.oracleHint = oracleHint;
-    }
-
-    /**
-     * Sets the {@link Wait} for this SELECT
-     *
-     * @param wait the {@link Wait} for this SELECT
-     */
-    public void setWait(final Wait wait) {
-        this.wait = wait;
-    }
-
-    /**
-     * Returns the value of the {@link Wait} set for this SELECT
-     *
-     * @return the value of the {@link Wait} set for this SELECT
-     */
-    public Wait getWait() {
-        return wait;
     }
 
     public String getForXmlPath() {
@@ -323,247 +518,286 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         this.ksqlWindow = ksqlWindow;
     }
 
-    public void setEmitChanges(boolean emitChanges) {
-        this.emitChanges = emitChanges;
+    public EmitMode getEmitMode() {
+        return emitMode;
+    }
+
+    public void setEmitMode(EmitMode emitMode) {
+        this.emitMode = java.util.Objects.requireNonNull(emitMode, "emitMode");
+    }
+
+    public PlainSelect withEmitMode(EmitMode emitMode) {
+        setEmitMode(emitMode);
+        return this;
+    }
+
+    public StringBuilder appendEmitClauseTo(StringBuilder builder) {
+        if (emitMode != EmitMode.NONE) {
+            builder.append(" EMIT ").append(emitMode);
+        }
+        return builder;
     }
 
     public boolean isEmitChanges() {
-        return emitChanges;
+        return emitMode == EmitMode.CHANGES;
     }
 
-    
-    public WithIsolation getWithIsolation() {
-        return withIsolation;
+    public void setEmitChanges(boolean emitChanges) {
+        emitMode = emitChanges ? EmitMode.CHANGES : EmitMode.NONE;
     }
 
-    public void setWithIsolation(WithIsolation withIsolation) {
-        this.withIsolation = withIsolation;
+    public List<WindowDefinition> getWindowDefinitions() {
+        return windowDefinitions;
     }
 
-    @Override
-    @SuppressWarnings({"PMD.CyclomaticComplexity" , "PMD.ExcessiveMethodLength", "PMD.NPathComplexity"})
-    public String toString() {
-        StringBuilder sql = new StringBuilder();
-        if (useBrackets) {
-            sql.append("(");
+    public void setWindowDefinitions(List<WindowDefinition> windowDefinitions) {
+        this.windowDefinitions = windowDefinitions;
+    }
+
+    @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.ExcessiveMethodLength",
+            "PMD.NPathComplexity"})
+    /**
+     * DuckDB allows the FROM clause to come first, with the SELECT clause optional:
+     * {@code FROM tbl SELECT a} and {@code FROM tbl WHERE a > 1}.
+     */
+    public boolean isFromFirst() {
+        return fromFirst;
+    }
+
+    public void setFromFirst(boolean fromFirst) {
+        this.fromFirst = fromFirst;
+    }
+
+    public PlainSelect withFromFirst(boolean fromFirst) {
+        setFromFirst(fromFirst);
+        return this;
+    }
+
+    public StringBuilder appendSelectBodyTo(StringBuilder builder) {
+        if (fromFirst) {
+            // DuckDB allows the FROM clause to lead: FROM tbl [SELECT ...] [WHERE ...]
+            appendFromClauseTo(builder);
+            if (selectItems != null && !selectItems.isEmpty()) {
+                builder.append(" ");
+                appendSelectClauseTo(builder);
+                appendIntoClausesTo(builder);
+            }
+        } else {
+            appendSelectClauseTo(builder);
+            appendIntoClausesTo(builder);
+            appendFromClauseTo(builder);
         }
-        sql.append("SELECT ");
 
-        if (this.mySqlHintStraightJoin) {
-            sql.append("STRAIGHT_JOIN ");
+        if (preWhere != null) {
+            builder.append(" PREWHERE ").append(preWhere);
         }
+        if (where != null) {
+            builder.append(" WHERE ").append(where);
+        }
+        if (oracleHierarchical != null) {
+            builder.append(oracleHierarchical);
+        }
+        if (preferringClause != null) {
+            builder.append(" ").append(preferringClause);
+        }
+        if (groupBy != null) {
+            builder.append(" ").append(groupBy);
+        }
+        if (having != null) {
+            builder.append(" HAVING ").append(having);
+        }
+        if (qualify != null && !qualifyAfterWindow) {
+            builder.append(" QUALIFY ").append(qualify);
+        }
+        if (windowDefinitions != null) {
+            builder.append(" WINDOW ");
+            builder.append(windowDefinitions.stream().map(WindowDefinition::toString)
+                    .collect(joining(", ")));
+        }
+        if (qualify != null && qualifyAfterWindow) {
+            builder.append(" QUALIFY ").append(qualify);
+        }
+        appendEmitClauseTo(builder);
+        if (intoTempTable != null) {
+            builder.append(" INTO TEMP ").append(intoTempTable);
+        }
+        if (useWithNoLog) {
+            builder.append(" WITH NO LOG");
+        }
+        return builder;
+    }
 
+    private void appendSelectClauseTo(StringBuilder builder) {
+        builder.append("SELECT ");
+        int afterSelect = builder.length();
+        appendSelectHintsTo(builder);
+        appendSelectQualifiersTo(builder);
+        appendMySqlSelectModifiersTo(builder);
+        builder.append(getStringList(selectItems));
+        // PostgreSQL permits SELECT with no target expressions: keep "SELECT
+        // FROM" instead of doubling the space.
+        if (builder.length() == afterSelect) {
+            builder.deleteCharAt(afterSelect - 1);
+        }
+    }
+
+    private void appendSelectHintsTo(StringBuilder builder) {
         if (oracleHint != null) {
-            sql.append(oracleHint).append(" ");
+            builder.append(oracleHint).append(" ");
         }
 
         if (skip != null) {
-            sql.append(skip).append(" ");
+            builder.append(skip).append(" ");
         }
 
         if (first != null) {
-            sql.append(first).append(" ");
+            builder.append(first).append(" ");
         }
+    }
 
+    private void appendSelectQualifiersTo(StringBuilder builder) {
         if (distinct != null) {
-            sql.append(distinct).append(" ");
+            builder.append(distinct).append(" ");
         }
-        if (top != null) {
-            sql.append(top).append(" ");
-        }
-        if (mySqlCacheFlag != null) {
-            sql.append(mySqlCacheFlag.name()).append(" ");
-        }
-        if (mySqlSqlCalcFoundRows) {
-            sql.append("SQL_CALC_FOUND_ROWS").append(" ");
-        }
-        sql.append(getStringList(selectItems));
 
+        if (bigQuerySelectQualifier != null) {
+            switch (bigQuerySelectQualifier) {
+                case AS_STRUCT:
+                    builder.append("AS STRUCT ");
+                    break;
+                case AS_VALUE:
+                    builder.append("AS VALUE ");
+                    break;
+            }
+        }
+
+        if (top != null) {
+            builder.append(top).append(" ");
+        }
+    }
+
+    /** Appends the typed modifiers in MySQL's documented SELECT order. */
+    public void appendMySqlSelectModifiersTo(StringBuilder builder) {
+        for (MySqlSelectModifier modifier : mySqlSelectModifiers) {
+            builder.append(modifier).append(" ");
+        }
+    }
+
+    /** Returns the modifiers independently of the selected expressions and aliases. */
+    public Set<MySqlSelectModifier> getMySqlSelectModifiers() {
+        return Collections.unmodifiableSet(mySqlSelectModifiers);
+    }
+
+    public void setMySqlSelectModifiers(Collection<MySqlSelectModifier> modifiers) {
+        EnumSet<MySqlSelectModifier> copy = EnumSet.noneOf(MySqlSelectModifier.class);
+        if (modifiers != null) {
+            copy.addAll(modifiers);
+        }
+        if (copy.contains(MySqlSelectModifier.SQL_CACHE)
+                && copy.contains(MySqlSelectModifier.SQL_NO_CACHE)) {
+            throw new IllegalArgumentException("SQL_CACHE and SQL_NO_CACHE cannot be combined");
+        }
+        mySqlSelectModifiers.clear();
+        mySqlSelectModifiers.addAll(copy);
+    }
+
+    public PlainSelect addMySqlSelectModifiers(MySqlSelectModifier... modifiers) {
+        EnumSet<MySqlSelectModifier> copy = mySqlSelectModifiers.clone();
+        Collections.addAll(copy, modifiers);
+        setMySqlSelectModifiers(copy);
+        return this;
+    }
+
+    public PlainSelect withMySqlSelectModifiers(Collection<MySqlSelectModifier> modifiers) {
+        setMySqlSelectModifiers(modifiers);
+        return this;
+    }
+
+    private void setMySqlSelectModifier(MySqlSelectModifier modifier, boolean enabled) {
+        if (enabled) {
+            mySqlSelectModifiers.add(modifier);
+        } else {
+            mySqlSelectModifiers.remove(modifier);
+        }
+    }
+
+    private void appendIntoClausesTo(StringBuilder builder) {
         if (intoTables != null) {
-            sql.append(" INTO ");
+            builder.append(" INTO ");
             for (Iterator<Table> iter = intoTables.iterator(); iter.hasNext();) {
-                sql.append(iter.next().toString());
+                builder.append(iter.next().toString());
                 if (iter.hasNext()) {
-                    sql.append(", ");
+                    builder.append(", ");
                 }
             }
         }
 
+        if (mySqlSelectIntoClause != null
+                && mySqlSelectIntoClause
+                        .getPosition() == MySqlSelectIntoClause.Position.BEFORE_FROM) {
+            builder.append(" ").append(mySqlSelectIntoClause);
+        }
+    }
+
+    private void appendFromClauseTo(StringBuilder builder) {
         if (fromItem != null) {
-            sql.append(" FROM ").append(fromItem);
+            builder.append(fromFirst ? "FROM " : " FROM ");
+            if (isUsingOnly) {
+                builder.append("ONLY ");
+            }
+            builder.append(fromItem);
+            if (lateralViews != null) {
+                for (LateralView lateralView : lateralViews) {
+                    builder.append(" ").append(lateralView);
+                }
+            }
             if (joins != null) {
-                Iterator<Join> it = joins.iterator();
-                while (it.hasNext()) {
-                    Join join = it.next();
+                for (Join join : joins) {
                     if (join.isSimple()) {
-                        sql.append(", ").append(join);
+                        builder.append(", ").append(join);
                     } else {
-                        sql.append(" ").append(join);
+                        builder.append(" ").append(join);
                     }
                 }
             }
 
+            if (isUsingFinal) {
+                builder.append(" FINAL");
+            }
+
             if (ksqlWindow != null) {
-                sql.append(" WINDOW ").append(ksqlWindow.toString());
+                builder.append(" WINDOW ").append(ksqlWindow);
             }
-            if (where != null) {
-                sql.append(" WHERE ").append(where);
-            }
-            if (oracleHierarchical != null) {
-                sql.append(oracleHierarchical.toString());
-            }
-            if (groupBy != null) {
-                sql.append(" ").append(groupBy.toString());
-            }
-            if (having != null) {
-                sql.append(" HAVING ").append(having);
-            }
-            sql.append(orderByToString(oracleSiblings, orderByElements));
-            if (emitChanges){
-                sql.append(" EMIT CHANGES");
-            }
-            if (limit != null) {
-                sql.append(limit);
-            }
-            if (offset != null) {
-                sql.append(offset);
-            }
-            if (fetch != null) {
-                sql.append(fetch);
-            }
-
-            if (withIsolation != null) {
-                sql.append(withIsolation);
-            }
-            if (isForUpdate()) {
-                sql.append(" FOR UPDATE");
-
-                if (forUpdateTable != null) {
-                    sql.append(" OF ").append(forUpdateTable);
-                }
-
-                if (wait != null) {
-                    // Wait's toString will do the formatting for us
-                    sql.append(wait);
-                }
-
-                if (isNoWait()) {
-                    sql.append(" NOWAIT");
-                }
-            }
-            if (optimizeFor != null) {
-                sql.append(optimizeFor);
-            }
-        } else {
-            // without from
-            if (where != null) {
-                sql.append(" WHERE ").append(where);
-            }
-
-            if (limit != null) {
-                sql.append(limit);
-            }
-            if (offset != null) {
-                sql.append(offset);
-            }
-            if (fetch != null) {
-                sql.append(fetch);
-            }
-            if (withIsolation != null) {
-                sql.append(withIsolation);
-            }            
         }
+    }
+
+
+    @Override
+    @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.ExcessiveMethodLength",
+            "PMD.NPathComplexity"})
+    public String toString() {
+        StringBuilder builder = new StringBuilder();
+        super.appendTo(builder);
+
+        if (mySqlSelectIntoClause != null
+                && mySqlSelectIntoClause.getPosition() == MySqlSelectIntoClause.Position.TRAILING) {
+            builder.append(" ").append(mySqlSelectIntoClause);
+        }
+
+        if (settings != null && !settings.isEmpty()) {
+            builder.append(" SETTINGS ");
+            UpdateSet.appendUpdateSetsTo(builder, settings);
+        }
+
+        if (optimizeFor != null) {
+            builder.append(optimizeFor);
+        }
+
         if (forXmlPath != null) {
-            sql.append(" FOR XML PATH(").append(forXmlPath).append(")");
-        }
-        if (useBrackets) {
-            sql.append(")");
-        }
-        return sql.toString();
-    }
-
-    public static String orderByToString(List<OrderByElement> orderByElements) {
-        return orderByToString(false, orderByElements);
-    }
-
-    public static String orderByToString(boolean oracleSiblings, List<OrderByElement> orderByElements) {
-        return getFormatedList(orderByElements, oracleSiblings ? "ORDER SIBLINGS BY" : "ORDER BY");
-    }
-
-    public static String getFormatedList(List<?> list, String expression) {
-        return getFormatedList(list, expression, true, false);
-    }
-
-    public static String getFormatedList(List<?> list, String expression, boolean useComma, boolean useBrackets) {
-        String sql = getStringList(list, useComma, useBrackets);
-
-        if (sql.length() > 0) {
-            if (expression.length() > 0) {
-                sql = " " + expression + " " + sql;
-            } else {
-                sql = " " + sql;
-            }
+            builder.append(" FOR XML PATH(").append(forXmlPath).append(")");
         }
 
-        return sql;
-    }
-
-    /**
-     * List the toString out put of the objects in the List comma separated. If the
-     * List is null or empty an empty string is returned.
-     *
-     * The same as getStringList(list, true, false)
-     *
-     * @see #getStringList(List, boolean, boolean)
-     * @param list list of objects with toString methods
-     * @return comma separated list of the elements in the list
-     */
-    public static String getStringList(List<?> list) {
-        return getStringList(list, true, false);
-    }
-
-    /**
-     * List the toString out put of the objects in the List that can be comma
-     * separated. If the List is null or empty an empty string is returned.
-     *
-     * @param list        list of objects with toString methods
-     * @param useComma    true if the list has to be comma separated
-     * @param useBrackets true if the list has to be enclosed in brackets
-     * @return comma separated list of the elements in the list
-     */
-    public static String getStringList(List<?> list, boolean useComma, boolean useBrackets) {
-        return appendStringListTo(new StringBuilder(), list, useComma, useBrackets).toString();
-    }
-
-    /**
-     * Append the toString out put of the objects in the List (that can be comma
-     * separated). If the List is null or empty an empty string is returned.
-     *
-     * @param list        list of objects with toString methods
-     * @param useComma    true if the list has to be comma separated
-     * @param useBrackets true if the list has to be enclosed in brackets
-     * @return comma separated list of the elements in the list
-     */
-    public static StringBuilder appendStringListTo(StringBuilder builder, List<?> list, boolean useComma, boolean useBrackets) {
-        if (list != null) {
-            String comma = useComma ? "," : "";
-
-            if (useBrackets) {
-                builder.append("(");
-            }
-
-            int size = list.size();
-            for (int i = 0; i < size; i++) {
-                builder.append(list.get(i)).append( i < size - 1
-                        ? comma + " "
-                        : "" );
-            }
-
-            if (useBrackets) {
-                builder.append(")");
-            }
-        }
-        return builder;
+        return builder.toString();
     }
 
     public PlainSelect withMySqlSqlCalcFoundRows(boolean mySqlCalcFoundRows) {
@@ -576,28 +810,29 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         return this;
     }
 
-    public void setMySqlSqlCalcFoundRows(boolean mySqlCalcFoundRows) {
-        this.mySqlSqlCalcFoundRows = mySqlCalcFoundRows;
-    }
-
-    public void setMySqlSqlCacheFlag(MySqlSqlCacheFlags sqlCacheFlag) {
-        this.mySqlCacheFlag = sqlCacheFlag;
-    }
-
     public boolean getMySqlSqlCalcFoundRows() {
-        return this.mySqlSqlCalcFoundRows;
+        return mySqlSelectModifiers.contains(MySqlSelectModifier.SQL_CALC_FOUND_ROWS);
+    }
+
+    public void setMySqlSqlCalcFoundRows(boolean mySqlCalcFoundRows) {
+        setMySqlSelectModifier(MySqlSelectModifier.SQL_CALC_FOUND_ROWS, mySqlCalcFoundRows);
     }
 
     public MySqlSqlCacheFlags getMySqlSqlCacheFlag() {
-        return this.mySqlCacheFlag;
+        if (mySqlSelectModifiers.contains(MySqlSelectModifier.SQL_CACHE)) {
+            return MySqlSqlCacheFlags.SQL_CACHE;
+        }
+        return mySqlSelectModifiers.contains(MySqlSelectModifier.SQL_NO_CACHE)
+                ? MySqlSqlCacheFlags.SQL_NO_CACHE
+                : null;
     }
 
-    public void setNoWait(boolean noWait) {
-        this.noWait = noWait;
-    }
-
-    public boolean isNoWait() {
-        return this.noWait;
+    public void setMySqlSqlCacheFlag(MySqlSqlCacheFlags sqlCacheFlag) {
+        mySqlSelectModifiers.remove(MySqlSelectModifier.SQL_CACHE);
+        mySqlSelectModifiers.remove(MySqlSelectModifier.SQL_NO_CACHE);
+        if (sqlCacheFlag != null) {
+            mySqlSelectModifiers.add(MySqlSelectModifier.valueOf(sqlCacheFlag.name()));
+        }
     }
 
     public PlainSelect withDistinct(Distinct distinct) {
@@ -610,28 +845,18 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         return this;
     }
 
+    public PlainSelect withMySqlSelectIntoClause(MySqlSelectIntoClause mySqlSelectIntoClause) {
+        this.setMySqlSelectIntoClause(mySqlSelectIntoClause);
+        return this;
+    }
+
     public PlainSelect withWhere(Expression where) {
         this.setWhere(where);
         return this;
     }
 
-    public PlainSelect withOrderByElements(List<OrderByElement> orderByElements) {
-        this.setOrderByElements(orderByElements);
-        return this;
-    }
-
-    public PlainSelect withLimit(Limit limit) {
-        this.setLimit(limit);
-        return this;
-    }
-
-    public PlainSelect withOffset(Offset offset) {
-        this.setOffset(offset);
-        return this;
-    }
-
-    public PlainSelect withFetch(Fetch fetch) {
-        this.setFetch(fetch);
+    public PlainSelect withPreWhere(Expression preWhere) {
+        this.setPreWhere(preWhere);
         return this;
     }
 
@@ -665,6 +890,11 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         return this;
     }
 
+    public PlainSelect withPreferringClause(PreferringClause preferringClause) {
+        this.setPreferringClause(preferringClause);
+        return this;
+    }
+
     public PlainSelect withOracleHint(OracleHint oracleHint) {
         this.setOracleHint(oracleHint);
         return this;
@@ -672,21 +902,6 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
 
     public PlainSelect withOracleSiblings(boolean oracleSiblings) {
         this.setOracleSiblings(oracleSiblings);
-        return this;
-    }
-
-    public PlainSelect withForUpdate(boolean forUpdate) {
-        this.setForUpdate(forUpdate);
-        return this;
-    }
-
-    public PlainSelect withForUpdateTable(Table forUpdateTable) {
-        this.setForUpdateTable(forUpdateTable);
-        return this;
-    }
-
-    public PlainSelect withUseBrackets(boolean useBrackets) {
-        this.setUseBrackets(useBrackets);
         return this;
     }
 
@@ -710,13 +925,9 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         return this;
     }
 
-    public PlainSelect withWait(Wait wait) {
-        this.setWait(wait);
-        return this;
-    }
-
-    public PlainSelect addSelectItems(Collection<? extends SelectItem> selectItems) {
-        List<SelectItem> collection = Optional.ofNullable(getSelectItems()).orElseGet(ArrayList::new);
+    public PlainSelect addSelectItems(Collection<? extends SelectItem<?>> selectItems) {
+        List<SelectItem<?>> collection =
+                Optional.ofNullable(getSelectItems()).orElseGet(ArrayList::new);
         collection.addAll(selectItems);
         return this.withSelectItems(collection);
     }
@@ -739,16 +950,16 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         return this.withJoins(collection);
     }
 
-    public PlainSelect addOrderByElements(OrderByElement... orderByElements) {
-        List<OrderByElement> collection = Optional.ofNullable(getOrderByElements()).orElseGet(ArrayList::new);
-        Collections.addAll(collection, orderByElements);
-        return this.withOrderByElements(collection);
+    public PlainSelect addSettings(UpdateSet... settings) {
+        List<UpdateSet> collection = Optional.ofNullable(getSettings()).orElseGet(ArrayList::new);
+        Collections.addAll(collection, settings);
+        return this.withSettings(collection);
     }
 
-    public PlainSelect addOrderByElements(Collection<? extends OrderByElement> orderByElements) {
-        List<OrderByElement> collection = Optional.ofNullable(getOrderByElements()).orElseGet(ArrayList::new);
-        collection.addAll(orderByElements);
-        return this.withOrderByElements(collection);
+    public PlainSelect addSettings(Collection<? extends UpdateSet> settings) {
+        List<UpdateSet> collection = Optional.ofNullable(getSettings()).orElseGet(ArrayList::new);
+        collection.addAll(settings);
+        return this.withSettings(collection);
     }
 
     public <E extends FromItem> E getFromItem(Class<E> type) {
@@ -759,7 +970,15 @@ public class PlainSelect extends ASTNodeAccessImpl implements SelectBody {
         return type.cast(getWhere());
     }
 
+    public <E extends Expression> E getPreWhere(Class<E> type) {
+        return type.cast(getPreWhere());
+    }
+
     public <E extends Expression> E getHaving(Class<E> type) {
         return type.cast(getHaving());
+    }
+
+    public enum BigQuerySelectQualifier {
+        AS_STRUCT, AS_VALUE
     }
 }

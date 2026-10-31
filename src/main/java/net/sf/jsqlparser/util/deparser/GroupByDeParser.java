@@ -9,69 +9,25 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
-import java.util.Iterator;
-import java.util.List;
-
-import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
-import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.statement.select.GroupByElement;
 
 public class GroupByDeParser extends AbstractDeParser<GroupByElement> {
 
-    private ExpressionVisitor expressionVisitor;
+    private final ExpressionListDeParser<?> expressionListDeParser;
+    private final ExpressionVisitor<StringBuilder> expressionVisitor;
 
-    GroupByDeParser() {
-        super(new StringBuilder());
-    }
-
-    public GroupByDeParser(ExpressionVisitor expressionVisitor, StringBuilder buffer) {
+    public GroupByDeParser(ExpressionVisitor<StringBuilder> expressionVisitor,
+            StringBuilder buffer) {
         super(buffer);
         this.expressionVisitor = expressionVisitor;
-        this.buffer = buffer;
+        this.expressionListDeParser = new ExpressionListDeParser<>(expressionVisitor, buffer);
+        this.builder = buffer;
     }
 
     @Override
-    @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
     public void deParse(GroupByElement groupBy) {
-        buffer.append("GROUP BY ");
-        if (groupBy.isUsingBrackets()) {
-            buffer.append("( ");
-        }
-        List<Expression> expressions = groupBy.getGroupByExpressionList().getExpressions();
-        if (expressions != null) {
-            for (Iterator<Expression> iter = expressions.iterator(); iter.hasNext();) {
-                iter.next().accept(expressionVisitor);
-                if (iter.hasNext()) {
-                    buffer.append(", ");
-                }
-            }
-        }
-        if (groupBy.isUsingBrackets()) {
-            buffer.append(" )");
-        }
-        if (!groupBy.getGroupingSets().isEmpty()) {
-            buffer.append("GROUPING SETS (");
-            boolean first = true;
-            for (Object o : groupBy.getGroupingSets()) {
-                if (first) {
-                    first = false;
-                } else {
-                    buffer.append(", ");
-                }
-                if (o instanceof Expression) {
-                    buffer.append(o.toString());
-                } else if (o instanceof ExpressionList) {
-                    ExpressionList list = (ExpressionList) o;
-                    buffer.append(list.getExpressions() == null ? "()" : list.toString());
-                }
-            }
-            buffer.append(")");
-        }
+        groupBy.appendTo(builder, expressionListDeParser::deParse,
+                expression -> expression.accept(expressionVisitor, null));
     }
-
-    void setExpressionVisitor(ExpressionVisitor expressionVisitor) {
-        this.expressionVisitor = expressionVisitor;
-    }
-
 }

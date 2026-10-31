@@ -15,20 +15,25 @@ import net.sf.jsqlparser.expression.JdbcParameter;
 import net.sf.jsqlparser.expression.OracleHierarchicalExpression;
 import net.sf.jsqlparser.expression.OracleHint;
 import net.sf.jsqlparser.expression.operators.relational.SupportsOldOracleJoinSyntax;
+import net.sf.jsqlparser.parser.AbstractJSqlParser;
 import net.sf.jsqlparser.statement.Block;
 import net.sf.jsqlparser.statement.Commit;
 import net.sf.jsqlparser.statement.CreateFunctionalStatement;
 import net.sf.jsqlparser.statement.DeclareStatement;
 import net.sf.jsqlparser.statement.DescribeStatement;
 import net.sf.jsqlparser.statement.ExplainStatement;
-import net.sf.jsqlparser.statement.SetStatement;
 import net.sf.jsqlparser.statement.ResetStatement;
+import net.sf.jsqlparser.statement.SetStatement;
 import net.sf.jsqlparser.statement.ShowColumnsStatement;
 import net.sf.jsqlparser.statement.ShowStatement;
+import net.sf.jsqlparser.statement.TableMaintenanceStatement;
 import net.sf.jsqlparser.statement.UseStatement;
 import net.sf.jsqlparser.statement.alter.Alter;
+import net.sf.jsqlparser.statement.alter.AlterEventTrigger;
 import net.sf.jsqlparser.statement.alter.sequence.AlterSequence;
+import net.sf.jsqlparser.statement.analyze.Analyze;
 import net.sf.jsqlparser.statement.comment.Comment;
+import net.sf.jsqlparser.statement.create.database.CreateDatabase;
 import net.sf.jsqlparser.statement.create.function.CreateFunction;
 import net.sf.jsqlparser.statement.create.index.CreateIndex;
 import net.sf.jsqlparser.statement.create.procedure.CreateProcedure;
@@ -36,6 +41,7 @@ import net.sf.jsqlparser.statement.create.schema.CreateSchema;
 import net.sf.jsqlparser.statement.create.sequence.CreateSequence;
 import net.sf.jsqlparser.statement.create.synonym.CreateSynonym;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
+import net.sf.jsqlparser.statement.create.trigger.CreateEventTrigger;
 import net.sf.jsqlparser.statement.create.view.AlterView;
 import net.sf.jsqlparser.statement.create.view.CreateView;
 import net.sf.jsqlparser.statement.delete.Delete;
@@ -43,7 +49,9 @@ import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.execute.Execute;
 import net.sf.jsqlparser.statement.grant.Grant;
 import net.sf.jsqlparser.statement.merge.Merge;
-import net.sf.jsqlparser.statement.replace.Replace;
+import net.sf.jsqlparser.statement.refresh.RefreshMaterializedViewStatement;
+import net.sf.jsqlparser.statement.reindex.Reindex;
+import net.sf.jsqlparser.statement.role.ReassignOwned;
 import net.sf.jsqlparser.statement.select.Fetch;
 import net.sf.jsqlparser.statement.select.First;
 import net.sf.jsqlparser.statement.select.KSQLWindow;
@@ -52,17 +60,15 @@ import net.sf.jsqlparser.statement.select.Offset;
 import net.sf.jsqlparser.statement.select.OptimizeFor;
 import net.sf.jsqlparser.statement.select.Pivot;
 import net.sf.jsqlparser.statement.select.PivotXml;
-import net.sf.jsqlparser.statement.select.SelectExpressionItem;
 import net.sf.jsqlparser.statement.select.Skip;
 import net.sf.jsqlparser.statement.select.TableFunction;
 import net.sf.jsqlparser.statement.select.Top;
 import net.sf.jsqlparser.statement.select.UnPivot;
-import net.sf.jsqlparser.statement.select.ValuesList;
-import net.sf.jsqlparser.statement.show.ShowTablesStatement;
+import net.sf.jsqlparser.statement.securitylabel.SecurityLabel;
+import net.sf.jsqlparser.statement.show.*;
 import net.sf.jsqlparser.statement.truncate.Truncate;
 import net.sf.jsqlparser.statement.update.Update;
 import net.sf.jsqlparser.statement.upsert.Upsert;
-import net.sf.jsqlparser.statement.values.ValuesStatement;
 
 public enum Feature {
 
@@ -71,10 +77,16 @@ public enum Feature {
      * "SELECT"
      */
     select,
+    /** Structured FROM row pattern recognition. */
+    matchRecognize,
+    /** BigQuery longest-match option. */
+    matchRecognizeOptions,
     /**
      * "GROUP BY"
      */
     selectGroupBy,
+    /** Explicit ASC/DESC on GROUP BY items in legacy MySQL. */
+    selectGroupByOrdering,
     /**
      * "GROUPING SETS"
      */
@@ -112,6 +124,7 @@ public enum Feature {
     limitOffset,
     /**
      * "OFFSET offset"
+     *
      * @see Offset
      */
     offset,
@@ -128,12 +141,12 @@ public enum Feature {
     fetch,
     /**
      * "FETCH FIRST row_count (ROW | ROWS) ONLY"
+     *
      * @see Fetch#isFetchParamFirst()
      */
     fetchFirst,
     /**
-     * "FETCH NEXT row_count (ROW | ROWS) ONLY"
-     * if not {@link #fetchFirst}
+     * "FETCH NEXT row_count (ROW | ROWS) ONLY" if not {@link #fetchFirst}
      *
      * @see Fetch#isFetchParamFirst()
      */
@@ -180,6 +193,10 @@ public enum Feature {
      */
     joinSemi,
     /**
+     * @see net.sf.jsqlparser.statement.select.Join#isAnti()
+     */
+    joinAnti,
+    /**
      * "INNER" join
      */
     joinInner,
@@ -192,8 +209,10 @@ public enum Feature {
      */
     joinApply,
 
-    joinWindow,
-    joinUsingColumns,
+    /** Nearest-match ASOF join. */
+    joinAsOf,
+
+    joinWindow, joinUsingColumns,
 
     /**
      * "SKIP variable" | "SKIP ?" | "SKIP rowCount"
@@ -202,9 +221,7 @@ public enum Feature {
      */
     skip,
     /**
-     * "FIRST" \?|[0-9]+|variable
-     * or
-     * "LIMIT" \?|[0-9]+|variable
+     * "FIRST" \?|[0-9]+|variable or "LIMIT" \?|[0-9]+|variable
      *
      * @see First
      */
@@ -248,6 +265,22 @@ public enum Feature {
      * "FOR UPDATE"
      */
     selectForUpdate,
+
+    /**
+     * "FOR SHARE"
+     */
+    selectForShare,
+
+    /**
+     * "FOR KEY SHARE"
+     */
+    selectForKeyShare,
+
+    /**
+     * "NO KEY UPDATE"
+     */
+    selectForNoKeyUpdate,
+
     /**
      * "FOR UPDATE OF table"
      */
@@ -260,6 +293,10 @@ public enum Feature {
      * "FOR UPDATE NOWAIT"
      */
     selectForUpdateNoWait,
+    /**
+     * "FOR UPDATE SKIP LOCKED"
+     */
+    selectForUpdateSkipLocked,
 
 
     /**
@@ -293,7 +330,7 @@ public enum Feature {
     /**
      * "RETURNING expr(, expr)*"
      *
-     * @see SelectExpressionItem
+     * @see net.sf.jsqlparser.expression.operators.relational.ExpressionList
      */
     insertReturningExpressionList,
 
@@ -302,9 +339,14 @@ public enum Feature {
      */
     insertValues,
     /**
-     * @see ValuesStatement
+     * @see net.sf.jsqlparser.statement.select.Values
      */
     values,
+
+    /**
+     * SQL "TABLE table_name [ORDER BY column_name] [LIMIT number [OFFSET number]]“
+     */
+    tableStatement,
 
     /**
      * SQL "UPDATE" statement is allowed
@@ -312,6 +354,9 @@ public enum Feature {
      * @see Update
      */
     update,
+
+    /** Application-time FOR PORTION OF in UPDATE and DELETE. */
+    forPortion,
     /**
      * "UPDATE table1 SET ... FROM table2
      */
@@ -323,9 +368,12 @@ public enum Feature {
     /**
      * UPDATE table SET (col, ...) = (SELECT col, ... )"
      */
-    updateUseSelect,
-    updateOrderBy,
-    updateLimit,
+    updateUseSelect, updateOrderBy, updateLimit,
+    /**
+     * "RETURNING expr(, expr)*"
+     *
+     * @see net.sf.jsqlparser.statement.select.SelectItem
+     */
     updateReturning,
     /**
      * SQL "DELETE" statement is allowed
@@ -349,6 +397,12 @@ public enum Feature {
      * "ORDER BY ..."
      */
     deleteOrderBy,
+    /**
+     * "RETURNING expr(, expr)*"
+     *
+     * @see net.sf.jsqlparser.statement.select.SelectItem
+     */
+    deleteReturningExpressionList,
 
     /**
      * SQL "UPSERT" statement is allowed
@@ -383,6 +437,14 @@ public enum Feature {
      * @see AlterView
      */
     alterView,
+
+    /**
+     * SQL "REFRESH MATERIALIZED VIEW" statement is allowed
+     *
+     * @see RefreshMaterializedViewStatement
+     */
+    refreshMaterializedView, refreshMaterializedWithDataView, refreshMaterializedWithNoDataView,
+
     /**
      * SQL "REPLACE VIEW" statement is allowed
      *
@@ -395,6 +457,34 @@ public enum Feature {
     alterIndex,
 
     /**
+     * MySQL and PostgreSQL "CREATE TABLESPACE" statement is allowed
+     *
+     * @see net.sf.jsqlparser.statement.create.tablespace.CreateTablespace
+     */
+    createTablespace,
+    /**
+     * MySQL and PostgreSQL "ALTER TABLESPACE" statement is allowed
+     *
+     * @see net.sf.jsqlparser.statement.alter.AlterTablespace
+     */
+    alterTablespace,
+
+
+    /**
+     * SQL "ANALYZE" statement is allowed
+     *
+     * @see Analyze
+     */
+    analyze,
+
+    /**
+     * MySQL/MariaDB "CHECK TABLE", "OPTIMIZE TABLE" and "REPAIR TABLE" statements are allowed
+     *
+     * @see TableMaintenanceStatement
+     */
+    tableMaintenance,
+
+    /**
      * SQL "TRUNCATE" statement is allowed
      *
      * @see Truncate
@@ -405,8 +495,9 @@ public enum Feature {
      *
      * @see Execute
      */
-    execute,
-    executeExec, executeCall, executeExecute,
+    oracleBlock,
+
+    execute, executeExec, executeCall, executeExecute, doStatement, insertBulk,
 
     /**
      * SQL "EXECUTE" statement is allowed
@@ -420,29 +511,42 @@ public enum Feature {
     executeUsing,
     /**
      * SQL "REPLACE" statement is allowed
-     *
-     * @see Replace
      */
+    @Deprecated
     replace,
     /**
      * SQL "DROP" statement is allowed
      *
      * @see Drop
      */
-    drop,
-    dropTable,
-    dropIndex,
-    dropView,
-    dropSchema,
-    dropSequence,
-    dropTableIfExists, dropIndexIfExists, dropViewIfExists, dropSchemaIfExists, dropSequenceIfExists,
+    drop, dropTable, dropIndex, dropView, dropSchema, dropSequence, dropTableIfExists, dropIndexIfExists, dropViewIfExists, dropSchemaIfExists, dropSequenceIfExists,
+    /**
+     * PostgreSQL "REASSIGN OWNED BY ... TO ..." statement is allowed
+     *
+     * @see ReassignOwned
+     */
+    reassignOwned,
 
+    /**
+     * SQL "CREATE DATABASE" statement is allowed
+     *
+     * @see CreateDatabase
+     */
+    createDatabase,
+    /**
+     * SQL "ALTER DATABASE" statement is allowed
+     *
+     * @see net.sf.jsqlparser.statement.alter.database.AlterDatabase
+     */
+    alterDatabase,
     /**
      * SQL "CREATE SCHEMA" statement is allowed
      *
      * @see CreateSchema
      */
     createSchema,
+    /** SQL ALTER SCHEMA rename and owner changes. */
+    alterSchema,
     /**
      * SQL "CREATE VIEW" statement is allowed
      *
@@ -465,6 +569,12 @@ public enum Feature {
      * SQL "CREATE MATERIALIZED VIEW" statement is allowed
      */
     createViewMaterialized,
+
+    /**
+     * SQL "CREATE VIEW(x comment 'x', y comment 'y') comment 'view'" statement is allowed
+     */
+    createViewWithComment,
+
     /**
      * SQL "CREATE TABLE" statement is allowed
      *
@@ -492,7 +602,7 @@ public enum Feature {
      */
     createTableRowMovement,
     /**
-     * "CREATE TABLE (colspec) SELECT ... 
+     * "CREATE TABLE (colspec) SELECT ...
      */
     createTableFromSelect,
     /**
@@ -506,7 +616,17 @@ public enum Feature {
      *
      * @see CreateSequence
      */
-    createSequence,
+    createSequence, createAccessMethod, createAccessMethodTable,
+    /** Publication and subscription definitions. */
+    createForeignDataWrapper, alterForeignDataWrapper, createServer, alterServer, createUserMapping, alterUserMapping,
+
+    createRule, notifyStatement, createTextSearchConfiguration, alterTextSearchConfiguration, createCollation, alterCollation,
+
+    createPublication, alterPublication, createSubscription, alterSubscription,
+    /**
+     * Structured type, domain and extension statements.
+     */
+    createType, alterType, createDomain, alterDomain, createExtension, alterExtension,
     /**
      * SQL "CREATE SYNONYM" statement is allowed
      *
@@ -518,11 +638,43 @@ public enum Feature {
      */
     createTrigger,
     /**
+     * PostgreSQL "CREATE EVENT TRIGGER" and "ALTER EVENT TRIGGER" statements are allowed
+     *
+     * @see CreateEventTrigger
+     * @see AlterEventTrigger
+     */
+    createEventTrigger, alterEventTrigger,
+    /**
+     * PostgreSQL "REINDEX" statement is allowed; "REINDEX … CONCURRENTLY" additionally requires
+     * {@link #reindexConcurrently}
+     *
+     * @see Reindex
+     */
+    reindex, reindexConcurrently,
+    /**
+     * PostgreSQL "SECURITY LABEL" statement is allowed
+     *
+     * @see SecurityLabel
+     */
+    securityLabel,
+    /**
      * SQL "COMMIT" statement is allowed
      *
      * @see Commit
      */
     commit,
+    /** START TRANSACTION and dialect-specific BEGIN transaction statements. */
+    startTransaction,
+    /** RELEASE [SAVEPOINT] statements. */
+    releaseSavepoint,
+    /** Explicit AND [NO] CHAIN transaction completion. */
+    transactionChain,
+    /** Isolation level specified directly on BEGIN or START TRANSACTION. */
+    transactionIsolationLevel,
+    /** PostgreSQL [NOT] DEFERRABLE transaction characteristic. */
+    transactionDeferrable,
+    /** MySQL WITH CONSISTENT SNAPSHOT transaction characteristic. */
+    transactionConsistentSnapshot,
     /**
      * SQL "COMMENT ON" statement is allowed
      *
@@ -542,12 +694,50 @@ public enum Feature {
      */
     commentOnView,
 
+    /** Additional structured catalog targets of COMMENT ON. */
+    commentOnIndex, commentOnSchema, commentOnSequence, commentOnDomain, commentOnType, commentOnMaterializedView, commentOnFunction, commentOnConstraint,
+
+    /** COMMENT ON TRIGGER, POLICY or RULE within a table. */
+    commentOnTrigger, commentOnPolicy, commentOnRule,
+
+    /** COMMENT ON PROCEDURE, ROUTINE, AGGREGATE or CAST. */
+    commentOnProcedure, commentOnRoutine, commentOnAggregate, commentOnCast,
+
+    /** COMMENT ON COLLATION, FOREIGN TABLE or STATISTICS. */
+    commentOnCollation, commentOnForeignTable, commentOnStatistics,
+
+    /** COMMENT ON DATABASE, ROLE or TABLESPACE. */
+    commentOnDatabase, commentOnRole, commentOnTablespace,
+
+    /** COMMENT ON ACCESS METHOD, EXTENSION, FOREIGN DATA WRAPPER, LANGUAGE or SERVER. */
+    commentOnAccessMethod, commentOnExtension, commentOnForeignDataWrapper, commentOnLanguage, commentOnServer,
+
+    /** COMMENT ON EVENT TRIGGER, PUBLICATION or SUBSCRIPTION. */
+    commentOnEventTrigger, commentOnPublication, commentOnSubscription,
+
+    /** COMMENT ON OPERATOR, OPERATOR CLASS or OPERATOR FAMILY. */
+    commentOnOperator, commentOnOperatorClass, commentOnOperatorFamily,
+
+    /** COMMENT ON CONVERSION, LARGE OBJECT or TRANSFORM. */
+    commentOnConversion, commentOnLargeObject, commentOnTransform,
+
+    /** COMMENT ON TEXT SEARCH CONFIGURATION, DICTIONARY, PARSER or TEMPLATE. */
+    commentOnTextSearchConfiguration, commentOnTextSearchDictionary, commentOnTextSearchParser, commentOnTextSearchTemplate,
+
     /**
      * SQL "DESCRIBE" statement is allowed
      *
      * @see DescribeStatement
      */
     describe,
+
+    /**
+     * SQL "DESC" statement is allowed
+     *
+     * @see DescribeStatement
+     */
+    desc,
+
     /**
      * SQL "EXPLAIN" statement is allowed
      *
@@ -567,13 +757,42 @@ public enum Feature {
      */
     showColumns,
     /**
+     * @see ShowIndexStatement
+     */
+    showIndex,
+    /**
+     * MySQL/MariaDB "SHOW TABLE STATUS" statement is allowed
+     *
+     * @see ShowTableStatusStatement
+     */
+    showTableStatus,
+    /**
+     * MySQL/MariaDB "SHOW CREATE" statement is allowed
+     *
+     * @see ShowCreateStatement
+     */
+    showCreate,
+    /**
      * @see UseStatement
      */
     use,
+    /** SQL Server session permission to insert explicit identity values into a table. */
+    setIdentityInsert,
     /**
      * @see Grant
      */
-    grant,
+    grant, revoke, createRole, alterRole, alterDefaultPrivileges,
+    /**
+     * MySQL/MariaDB account management: "ALTER USER", "RENAME USER", "SET ROLE", "SET DEFAULT ROLE"
+     * and "SET PASSWORD"
+     *
+     * @see net.sf.jsqlparser.statement.alter.AlterUser
+     * @see net.sf.jsqlparser.statement.alter.RenameUser
+     * @see net.sf.jsqlparser.statement.SetRoleStatement
+     * @see net.sf.jsqlparser.statement.SetDefaultRoleStatement
+     * @see net.sf.jsqlparser.statement.SetPasswordStatement
+     */
+    alterUser, renameUser, setRole, setDefaultRole, setPassword,
     /**
      * @see Function
      */
@@ -590,6 +809,20 @@ public enum Feature {
      * @see CreateFunctionalStatement
      */
     functionalStatement,
+
+    alterFunction, alterProcedure, createOrAlterRoutine,
+    /**
+     * PostgreSQL "ALTER ROUTINE" statement is allowed
+     *
+     * @see net.sf.jsqlparser.statement.alter.AlterRoutine
+     */
+    alterRoutine,
+    /**
+     * PostgreSQL "ALTER TRIGGER" statement is allowed
+     *
+     * @see net.sf.jsqlparser.statement.alter.AlterTrigger
+     */
+    alterTrigger,
     /**
      * SQL block starting with "BEGIN" and ends with "END" statement is allowed
      *
@@ -600,13 +833,20 @@ public enum Feature {
      * @see DeclareStatement
      */
     declare,
+
+    /** SQL Server local table variables in queries and DML targets. */
+    tableVariable,
     /**
      * @see SetStatement
      */
     set,
+    /** PostgreSQL SET configuration_parameter TO value. */
+    setAssignmentTo,
+    /** SQL Server SET option [, option] ON | OFF. */
+    sqlServerSetOptions,
     /**
      * @see ResetStatement
-    */
+     */
     reset,
     /**
      * @see Pivot
@@ -621,21 +861,16 @@ public enum Feature {
      */
     pivotXml,
 
-    setOperation,
-    setOperationUnion,
-    setOperationIntersect,
-    setOperationExcept,
-    setOperationMinus,
+    setOperation, setOperationUnion, setOperationIntersect, setOperationExcept, setOperationMinus,
 
     /**
      * "WITH name query"
      */
-    withItem,
-    withItemRecursive,
+    withItem, withItemRecursive,
 
     lateralSubSelect,
     /**
-     * @see ValuesList
+     * @see net.sf.jsqlparser.statement.select.Values
      */
     valuesList,
     /**
@@ -693,14 +928,11 @@ public enum Feature {
      *
      * @see OracleHierarchicalExpression
      */
-    oracleHierarchicalExpression,
-    oracleOrderBySiblings,
+    oracleHierarchicalExpression, oracleOrderBySiblings,
 
     // MYSQL
 
-    mySqlHintStraightJoin,
-    mysqlSqlCacheFlag,
-    mysqlCalcFoundRows,
+    mySqlHintStraightJoin, mysqlSqlCacheFlag, mysqlCalcFoundRows, mysqlSelectModifiers,
 
     // SQLSERVER
 
@@ -715,27 +947,119 @@ public enum Feature {
     allowSquareBracketQuotation(false),
 
     /**
-       allow parsing of RDBMS specific syntax by switching off SQL Standard Compliant Syntax
-    */
+     * allow parsing of RDBMS specific syntax by switching off SQL Standard Compliant Syntax
+     */
     allowPostgresSpecificSyntax(false),
 
-    // PERFORMANCE
-    
-    /**
-     * allows complex expression parameters or named parameters for functions
-     * will be switched off, when deep nesting of functions is detected
-     */
-     allowComplexParsing(true),
+    /** Enables legacy GROUP BY ordering with the MYSQL dialect; disabled by default. */
+    allowLegacyMySqlGroupBy(false),
 
     /**
-     * allows passing through Unsupported Statements as a plain List of Tokens
-     * needs to be switched off, when VALIDATING statements or parsing blocks
+     * Target MySQL version for executable comments, encoded as major * 10000 + minor * 100 + patch.
+     * A negative value leaves the version unspecified: conditional comments then fail instead of
+     * silently discarding SQL. Only used with the MYSQL dialect; unversioned comments need no
+     * value.
+     */
+    mySqlServerVersion(-1),
+
+    // PERFORMANCE
+
+    /**
+     * allows complex expression parameters or named parameters for functions will be switched off,
+     * when deep nesting of functions is detected
+     */
+    allowComplexParsing(true),
+
+    /**
+     * allows passing through Unsupported Statements as a plain List of Tokens needs to be switched
+     * off, when VALIDATING statements or parsing blocks
      */
     allowUnsupportedStatements(false),
+
+    timeOut(8000),
+
+    /**
+     * allows Backslash '\' as Escape Character
+     */
+    allowBackslashEscapeCharacter(false),
+
+    /**
+     * allows double quoted String Literals (BigQuery, Spark/Databricks, MySQL default sql_mode);
+     * disabled by default, where double quotes stay quoted identifiers (ANSI SQL)
+     */
+    allowDoubleQuotedStrings(false),
+
+    /**
+     * Recognizes PostgreSQL $tag$...$tag$ literals; disabled by default to preserve unquoted
+     * identifiers, enabled by the PostgreSQL dialect preset. Untagged $$ literals are unaffected.
+     */
+    allowDollarQuotedStringTags(false),
+
+    /**
+     * concatenates adjacent String Literals: NEWLINE when separated by whitespace with at least one
+     * newline (the SQL standard and PostgreSQL), WHITESPACE across any whitespace (GoogleSQL,
+     * Spark/Databricks); OFF by default, where the second literal stays an alias (MySQL, SQL
+     * Server) or fails (everywhere else)
+     */
+    adjacentStringLiterals(AbstractJSqlParser.AdjacentStringLiterals.OFF),
+
+    /**
+     * allows MySQL `#` line comments; disabled by default, where a lone `#` stays the binary
+     * operator (#2507: PostgreSQL bitwise XOR / geometric intersection)
+     */
+    allowHashLineComments(false),
+
+    /**
+     * treats three consecutive newlines as a statement separator (enabled by default). When
+     * disabled, blank lines are plain whitespace, so a statement containing them is parsed whole
+     * instead of ending, or failing to parse, at the first run of blank lines
+     */
+    allowBlankLinesAsStatementSeparator(true),
+
+    /**
+     * allows digit separators in numeric literals, e.g. {@code 1_000_000} (DuckDB, PostgreSQL 16);
+     * disabled by default, where MySQL reads {@code 2024_01} as an identifier
+     */
+    allowDigitSeparators(false),
+
+    /**
+     * allows sub selects without parentheses, e.g. `select * from dual where 1 = select 1`
+     */
+    allowUnparenthesizedSubSelects(false),
+
+    /**
+     * maximum nesting depth for trying complex parsing, can bet set to -1 to ignore
+     */
+    allowedNestingDepth(10),
+
+    dialect(null),
+
+    /**
+     * "IMPORT"
+     */
+    imprt,
+
+    /**
+     * "EXPORT"
+     */
+    export,
+
+    /**
+     * MySQL allows a ',' as a separator between key and value entries. We allow that by default,
+     * but it can be disabled here
+     */
+    allowCommaAsKeyValueSeparator(true),
+
+    /**
+     * DB2 and Oracle allow Expressions as JSON_OBJECT key values. This clashes with Informix and
+     * Snowflake Json-Extraction syntax
+     */
+    allowExpressionAsJsonObjectKey(false)
+
     ;
 
-    private Object value;
-    private boolean configurable;
+    private final Object value;
+    private final boolean configurable;
 
     /**
      * a feature which can't configured within the parser
@@ -748,7 +1072,7 @@ public enum Feature {
     /**
      * a feature which can be configured by {@link FeatureConfiguration}
      *
-     * @param value
+     * @param value The Value Object of the Parameter.
      */
     Feature(Object value) {
         this.value = value;

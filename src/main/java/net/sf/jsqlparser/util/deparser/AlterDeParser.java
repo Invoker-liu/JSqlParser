@@ -10,16 +10,104 @@
 package net.sf.jsqlparser.util.deparser;
 
 import net.sf.jsqlparser.statement.alter.Alter;
+import net.sf.jsqlparser.statement.alter.AlterForeignDataOptions;
+import net.sf.jsqlparser.expression.ExpressionVisitor;
+import net.sf.jsqlparser.statement.alter.AlterExpression;
+import net.sf.jsqlparser.statement.alter.AlterExpressionPartition;
+import net.sf.jsqlparser.statement.alter.AlterExpressionPrimaryKey;
+import net.sf.jsqlparser.statement.alter.RelationAlterAction;
+import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.statement.create.table.IndexOptionSource;
 
 public class AlterDeParser extends AbstractDeParser<Alter> {
+    private final ExpressionVisitor<StringBuilder> expressionVisitor;
 
     public AlterDeParser(StringBuilder buffer) {
+        this(buffer, new StatementDeParser(buffer).getExpressionDeParser());
+    }
+
+    public AlterDeParser(StringBuilder buffer, ExpressionVisitor<StringBuilder> expressionVisitor) {
         super(buffer);
+        this.expressionVisitor = expressionVisitor;
     }
 
     @Override
     public void deParse(Alter alter) {
-        buffer.append(alter.toString());
+        alter.appendTargetTo(builder);
+        boolean first = true;
+        for (AlterExpression action : alter.getAlterExpressions()) {
+            if (!first) {
+                builder.append(Alter.separatorBefore(action));
+            }
+            deParseAction(action);
+            first = false;
+        }
+    }
+
+    private void deParseAction(AlterExpression action) {
+        if (action instanceof AlterForeignDataOptions) {
+            ((AlterForeignDataOptions) action).appendTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
+            return;
+        }
+        if (action instanceof net.sf.jsqlparser.statement.alter.AlterExpressionOrderBy) {
+            ((net.sf.jsqlparser.statement.alter.AlterExpressionOrderBy) action).appendTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
+            return;
+        }
+        if (action instanceof RelationAlterAction) {
+            ((RelationAlterAction) action).appendTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
+            return;
+        }
+        if (action instanceof AlterExpressionPartition) {
+            ((AlterExpressionPartition) action).appendTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
+            return;
+        }
+        if (action instanceof AlterExpressionPrimaryKey) {
+            ((AlterExpressionPrimaryKey) action).appendTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
+            return;
+        }
+        if (action.hasActiveTableDefinition()) {
+            builder.append(action.getOperation()).append(' ');
+            new TableElementDeParser(builder, expressionVisitor).deParse(
+                    action.getConstraint() != null ? action.getConstraint() : action.getIndex());
+            if (action.getConstraints() != null && !action.getConstraints().isEmpty()) {
+                builder.append(' ')
+                        .append(PlainSelect.getStringList(action.getConstraints(), false, false));
+            }
+            if (action.getUseEqual()) {
+                builder.append('=');
+            }
+            deParseTail(action);
+            return;
+        }
+        if (!action.getColumnDefaults().isEmpty()) {
+            action.appendColumnActionTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
+            return;
+        }
+        if (action.hasActiveColumnDefinitions()) {
+            action.appendColumnDefinitionsTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
+        } else {
+            builder.append(action);
+        }
+    }
+
+    private void deParseTail(AlterExpression action) {
+        if (action.getParameters() != null && !action.getParameters().isEmpty()) {
+            builder.append(' ')
+                    .append(PlainSelect.getStringList(action.getParameters(), false, false));
+        }
+        IndexOptionSource options = action.getConstraint() instanceof IndexOptionSource
+                ? (IndexOptionSource) action.getConstraint()
+                : action.getIndex();
+        if (options != null && options.getIndexOptions().getCommentText() != null) {
+            builder.append(" COMMENT ").append(options.getIndexOptions().getCommentText());
+        }
     }
 
 }

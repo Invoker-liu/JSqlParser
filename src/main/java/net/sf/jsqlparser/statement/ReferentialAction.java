@@ -9,10 +9,17 @@
  */
 package net.sf.jsqlparser.statement;
 
-public class ReferentialAction {
+import java.io.Serializable;
+import java.util.Locale;
+import java.util.List;
+import java.util.Objects;
+import net.sf.jsqlparser.statement.select.PlainSelect;
+
+public class ReferentialAction implements Serializable {
 
     private Type type;
     private Action action;
+    private List<String> columnNames;
 
     public ReferentialAction() {
         // default constructor
@@ -49,6 +56,20 @@ public class ReferentialAction {
         return this;
     }
 
+    /** Columns affected by PostgreSQL ON DELETE SET NULL or SET DEFAULT; null means all columns. */
+    public List<String> getColumnNames() {
+        return columnNames;
+    }
+
+    public void setColumnNames(List<String> columnNames) {
+        this.columnNames = columnNames;
+    }
+
+    public ReferentialAction withColumnNames(List<String> columnNames) {
+        setColumnNames(columnNames);
+        return this;
+    }
+
     @Override
     public int hashCode() {
         final int prime = 31;
@@ -60,8 +81,10 @@ public class ReferentialAction {
 
     @Override
     public String toString() {
-        return new StringBuilder(" ON ").append(getType().name()).append(" ").append(getAction().getAction())
-                .toString();
+        return " ON " + getType().name() + " " +
+                getAction().getAction()
+                + (columnNames == null ? ""
+                        : " " + PlainSelect.getStringList(columnNames, true, true));
     }
 
     @Override
@@ -76,37 +99,34 @@ public class ReferentialAction {
             return false;
         }
         ReferentialAction other = (ReferentialAction) obj;
-//        if (action != other.action) {
-//            return false;
-//        }
-//        if (type != other.type) {
-//            return false;
-        return action==other.action && type == other.type;
+        return action == other.action && type == other.type
+                && Objects.equals(columnNames, other.columnNames);
     }
 
     public enum Type {
-        DELETE,
-        UPDATE
+        DELETE, UPDATE;
+
+        public static Type from(String name) {
+            return Enum.valueOf(Type.class, name.toUpperCase(Locale.ROOT));
+        }
     }
 
     public enum Action {
-        CASCADE("CASCADE"),
-        RESTRICT("RESTRICT"),
-        NO_ACTION("NO ACTION"),
-        SET_DEFAULT("SET DEFAULT"),
-        SET_NULL("SET NULL");
+        CASCADE("CASCADE"), RESTRICT("RESTRICT"), NO_ACTION("NO ACTION"), SET_DEFAULT(
+                "SET DEFAULT"), SET_NULL("SET NULL");
+
+        private final String action;
 
         Action(String action) {
             this.action = action;
         }
 
-        private final String action;
-
         /**
          * @param action
          * @return the {@link Action}, if found, otherwise <code>null</code>
          */
-        public static Action byAction(String action) {
+        public static Action from(String action) {
+            // We can't use Enum.valueOf() since there White Space involved
             for (Action a : values()) {
                 if (a.getAction().equals(action)) {
                     return a;
@@ -116,11 +136,6 @@ public class ReferentialAction {
         }
 
         public String getAction() {
-            return action;
-        }
-
-        @Override
-        public String toString() {
             return action;
         }
     }

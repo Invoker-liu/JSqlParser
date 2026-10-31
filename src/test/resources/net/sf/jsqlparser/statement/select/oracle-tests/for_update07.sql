@@ -10,5 +10,4 @@
 select employee_id from (select employee_id+1 as employee_id from employees)
    for update of a, b.c, d skip locked
 
-
---@FAILURE: Encountered unexpected token: "," "," recorded first on Aug 3, 2021, 7:20:08 AM
+--@SUCCESSFULLY_PARSED_AND_DEPARSED first on Jul 30, 2026, 8:19:20 AM

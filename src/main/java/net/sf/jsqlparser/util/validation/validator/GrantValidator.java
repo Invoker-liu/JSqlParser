@@ -23,14 +23,18 @@ public class GrantValidator extends AbstractValidator<Grant> {
     public void validate(Grant grant) {
         for (ValidationCapability c : getCapabilities()) {
             validateFeature(c, Feature.grant);
-            if (isNotEmpty(grant.getUsers())) {
-                grant.getUsers().forEach(u -> validateName(NamedObject.user, u));
+            // PUBLIC and CURRENT_USER are not names
+            if (isNotEmpty(grant.getClause().getGranteeItems())) {
+                grant.getClause().getGranteeItems().stream()
+                        .filter(grantee -> grantee.getAccount() != null)
+                        .forEach(grantee -> validateName(NamedObject.user,
+                                grantee.getAccount().toString()));
             }
-            if (grant.getRole() != null) {
-                validateName(NamedObject.role, grant.getRole());
-            }
+            grant.getClause().getRoleItems()
+                    .forEach(role -> validateName(NamedObject.role, role.toString()));
 
-            // can't validate grant.getObjectName() - don't know the kind of this object.
+            grant.getClause().visit(this::validateOptionalFromItem,
+                    this::validateOptionalExpression);
         }
     }
 
